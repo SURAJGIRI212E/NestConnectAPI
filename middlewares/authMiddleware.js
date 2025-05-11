@@ -30,7 +30,7 @@ const isAuthenticated = asyncErrorHandler(async (req, res, next) => {
                 return next(new CustomError('Password changed recently. Please login again', 401));
             }
             
-            req.user = {userId: user._id, username: user.username};
+            req.user = {userId: user._id, username: user.username,premium: user.isPremium};
          
             return next();
         }

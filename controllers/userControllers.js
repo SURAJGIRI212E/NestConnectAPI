@@ -41,7 +41,11 @@ export const updateUserProfile = asyncErrorHandler(async (req, res, next) => {
     if (!fullName && !bio && !avatarFile && !coverImageFile) {
         return next(new CustomError('Please provide at least one field to update', 400));
     }
-
+ return res.status(200).json({
+        status: 'success',
+        // data: updatedUser,
+        message: "Profile updated successfully"
+    });
     const updateFields = {};
     if (fullName) updateFields.fullName = fullName;
     if (bio) updateFields.bio = bio;

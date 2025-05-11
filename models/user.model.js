@@ -8,7 +8,7 @@ const userSchema = new mongoose.Schema({
   email:    { type: String, required: [true,'email is required'], unique: true, trim: true, lowercase: true ,
   match: [ /^\S+@\S+\.\S+$/, 'Please enter a valid email address' ]},
   bio:      { type: String },
-  avatar:   { type: String },
+  avatar:   { type: String, default:'https://res.cloudinary.com/dpds708v8/image/upload/v1746970089/sampleprofile_yqtqfv.jpg'},
   coverImage: { type: String },
   bookmarks: [{ type: mongoose.Schema.Types.ObjectId, ref: "Post" }],
   blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
