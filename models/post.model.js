@@ -40,6 +40,12 @@ const postSchema = new mongoose.Schema({
     type: String,
     enum: ['public', 'followers'],
     default: 'public'
+  },
+  edits: {
+    isedited: { type: Boolean, default: false },
+    editedAt: { type: Date, default: null },
+    editvalidtill: { type: Date, default: null },
+    editchancesleft: { type: Number, default: 3 }
   }
 }, {
   timestamps: true
@@ -72,6 +78,14 @@ postSchema.pre('save', async function(next) {
         next(error);
       }
     }
+  this.edits.isedited = true;
+  this.edits.editedAt = new Date();
+  this.edits.editchancesleft = this.edits.editchancesleft - 1;
+
+  }
+  if (this.isNew) {
+    const createdTime = this.createdAt || new Date();
+    this.edits.editvalidtill = new Date(createdTime.getTime() + 15 * 60 * 1000); // 15 mins from creation
   }
   next();
 });

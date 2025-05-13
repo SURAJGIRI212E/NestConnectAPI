@@ -5,20 +5,17 @@ import CustomError from '../utilities/CustomError.js';
 
 // Follow a user
 export const followUser = asyncErrorHandler(async (req, res, next) => {
-  
-    const  {username}  = req.params; // Changed from userId to username
-    console.log("username",username)
-    const followerId = req.user.userId;//current login user
-    console.log("followerID",followerId)
+    const { userId } = req.params;
+    const followerId = req.user._id; // current login user
 
-    // Find the user to follow by username
-    const userToFollow = await User.findOne({ username });
+    // Find the user to follow by ID
+    const userToFollow = await User.findById(userId);
     if (!userToFollow) {
         return next(new CustomError('User to follow not found', 404));
     }
 
     // Check if trying to follow self
-    if (userToFollow._id.toString() === followerId.toString()) {
+    if (userToFollow._id.toString() === followerId) {
         return next(new CustomError('You cannot follow yourself', 400));
     }
 
@@ -29,31 +26,28 @@ export const followUser = asyncErrorHandler(async (req, res, next) => {
     }
 
     // Create new follow relationship
-    const follow = await Follow.create({
+    await Follow.create({
         follower: followerId,
         following: userToFollow._id
     });
 
     res.status(200).json({
         status: 'success',
-        message: `Successfully followed ${userToFollow.username}`,
-       
+        message: `Successfully followed ${userToFollow.username}`
     });
 });
 
 // Unfollow a user
 export const unfollowUser = asyncErrorHandler(async (req, res, next) => {
-    const  {username}  = req.params; // Changed from userId to username
-    console.log("username",username)
-    const followerId = req.user.userId;//current login user
-    console.log("followerID",followerId)
+    const { userId } = req.params;
+    const followerId = req.user._id;
 
-    const userToUnFollow = await User.findOne({ username });
-   
+    const userToUnFollow = await User.findById(userId);
     if (!userToUnFollow) {
         return next(new CustomError('User to unfollow not found', 404));
     }
-    if (userToUnFollow._id.toString() === followerId.toString()) {
+
+    if (userToUnFollow._id.toString() === followerId) {
         return next(new CustomError('You cannot unfollow yourself', 400));
     }
 
@@ -68,18 +62,17 @@ export const unfollowUser = asyncErrorHandler(async (req, res, next) => {
 
     res.status(200).json({
         status: 'success',
-        message: `Successfully unfollowed ${userToUnFollow.username}`,
+        message: `Successfully unfollowed ${userToUnFollow.username}`
     });
 });
 
 // Get followers list
 export const getFollowers = asyncErrorHandler(async (req, res, next) => {
-    const { username } = req.params;
+    const { userId } = req.params;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
 
-    // First find user by username
-    const user = await User.findOne({ username });
+    const user = await User.findById(userId);
     if (!user) {
         return next(new CustomError('User not found', 404));
     }
@@ -100,8 +93,8 @@ export const getFollowers = asyncErrorHandler(async (req, res, next) => {
             currentPage: page,
             totalFollowers: total,
             user: {
-                current_username: user.username,
-               
+                username: user.username,
+                fullName: user.fullName
             }
         }
     });
@@ -109,25 +102,22 @@ export const getFollowers = asyncErrorHandler(async (req, res, next) => {
 
 // Get following list
 export const getFollowing = asyncErrorHandler(async (req, res, next) => {
-    const { username } = req.params;
+    const { userId } = req.params;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
 
-    // First find user by username
-    const user = await User.findOne({ username });
+    const user = await User.findById(userId);
     if (!user) {
         return next(new CustomError('User not found', 404));
     }
 
     const following = await Follow.find({ follower: user._id })
-        .populate('following', 'username fullName avatar bio') // Populate following user details
+        .populate('following', 'username fullName avatar bio')
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit);
 
-    // Transform the data to only include following user details
     const formattedFollowing = following.map(follow => follow.following);
-
     const total = await Follow.getFollowingCount(user._id);
 
     res.status(200).json({
@@ -147,7 +137,7 @@ export const getFollowing = asyncErrorHandler(async (req, res, next) => {
 
 // Get follow suggestions
 export const getFollowSuggestions = asyncErrorHandler(async (req, res, next) => {
-    const followerId = req.user.userId;
+    const followerId = req.user._id;
     const limit = parseInt(req.query.limit) || 5;
 
     // Get users that the current user is following
@@ -157,7 +147,6 @@ export const getFollowSuggestions = asyncErrorHandler(async (req, res, next) => 
 
     // Add current user's ID to exclusion list
     followingIds.push(followerId);
-    
 
     // Find users not followed by current user
     const suggestions = await User.find({

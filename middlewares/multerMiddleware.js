@@ -40,7 +40,7 @@ const getLimit = (req, type) => {
 // Profile upload (avatar & cover)
 export const uploadUserProfile = multer({
   storage,
-  limits: { fileSize: 2 * 1024 * 1024 },//2mb
+  limits: { fileSize: 1 * 1024 * 1024 },//1mb
   fileFilter: fileFilter(['image'])
 }).fields([
   { name: 'avatar', maxCount: 1 },

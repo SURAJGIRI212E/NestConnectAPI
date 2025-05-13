@@ -30,7 +30,7 @@ const isAuthenticated = asyncErrorHandler(async (req, res, next) => {
                 return next(new CustomError('Password changed recently. Please login again', 401));
             }
             
-            req.user = {userId: user._id, username: user.username};
+            req.user = {_id:user._id, username: user.username,premium: user.isPremium};
          
             return next();
         }
@@ -48,7 +48,7 @@ const isAuthenticated = asyncErrorHandler(async (req, res, next) => {
 
         // Generate new access token
         const newAccessToken = generateAccessToken(user._id);
-    
+         console.log("newAccessToken");
        
         // Set new access token in cookie
         res.cookie('access_token', newAccessToken, {

@@ -28,7 +28,7 @@ app.get('/test', (req, res) => {
 
 // Routes
 app.use('/api/auth', authRoute);
-app.use('/api/user', userRoute);
+app.use('/api/users', userRoute);
 app.use('/api/follow', followRoute);
 
 // 404 Route Handler
