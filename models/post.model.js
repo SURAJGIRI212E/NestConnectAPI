@@ -56,7 +56,7 @@ postSchema.index({ ownerid: 1, createdAt: -1 });
 postSchema.index({ hashtags: 1 });
 postSchema.index({ 'stats.likeCount': -1 });
 
-// Pre-save middleware to extract hashtags and mentions
+// Pre-save middleware to extract hashtags and mentions, and set edit timestamps
 postSchema.pre('save', async function(next) {
   if (this.isModified('content')) {
     // Extract hashtags
