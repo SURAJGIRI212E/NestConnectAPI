@@ -6,6 +6,7 @@ import CustomError from './utilities/CustomError.js';
 import errorHandler from './middlewares/errorMiddleware.js';
 import authRoute from './routes/authRoute.js';
 import userRoute from './routes/userRoute.js';
+import postRoute from './routes/postRoute.js';
 import followRoute from './routes/followRoute.js';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -29,6 +30,7 @@ app.get('/test', (req, res) => {
 // Routes
 app.use('/api/auth', authRoute);
 app.use('/api/users', userRoute);
+app.use('/api/posts', postRoute);
 app.use('/api/follow', followRoute);
 
 // 404 Route Handler
