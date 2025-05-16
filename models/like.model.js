@@ -26,10 +26,20 @@ likeSchema.post('save', async function() {
   if (post) await post.updateStats();
 });
 
-likeSchema.post('remove', async function() {
+// Handle both deleteOne and findOneAndDelete
+likeSchema.pre('deleteOne', { document: true, query: false }, async function() {
   const Post = mongoose.model('Post');
   const post = await Post.findById(this.post);
   if (post) await post.updateStats();
+});
+
+likeSchema.pre('findOneAndDelete', async function() {
+  const doc = await this.model.findOne(this.getFilter());
+  if (doc) {
+    const Post = mongoose.model('Post');
+    const post = await Post.findById(doc.post);
+    if (post) await post.updateStats();
+  }
 });
 
 // Method to check if user has liked

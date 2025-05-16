@@ -140,9 +140,21 @@ postSchema.methods.updateStats = async function() {
     Post.countDocuments({ parentPost: this._id })
   ]);
 
-  this.stats.likeCount = likeCount;
-  this.stats.commentCount = commentCount;
-  return this.save();
+  // Only update and save if counts have changed
+  if (this.stats.likeCount !== likeCount || this.stats.commentCount !== commentCount) {
+    this.stats.likeCount = likeCount;
+    this.stats.commentCount = commentCount;
+    // Use updateOne to avoid triggering middleware
+    await Post.updateOne(
+      { _id: this._id },
+      { 
+        $set: {
+          'stats.likeCount': likeCount,
+          'stats.commentCount': commentCount
+        }
+      }
+    );
+  }
 };
 
 const PostModel = mongoose.model("Post", postSchema);

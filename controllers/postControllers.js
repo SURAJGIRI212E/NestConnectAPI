@@ -125,9 +125,7 @@ export const getPost = asyncErrorHandler(async (req, res, next) => {
     if (!post) {
         return next(new CustomError('Post not found', 404));
     }    // Check if the post is visible to the user    // Check post visibility    console.log("current user id", req.user._id)
-    console.log("post owner id", post.ownerid._id)
     if (post.ownerid._id.toString() === req.user._id.toString()) {
-        console.log("same user post verfiried")
         // User can always see their own posts
     } else if (post.visibility === 'followers') {
         // For other users' posts, check if following
@@ -409,6 +407,36 @@ export const searchPosts = asyncErrorHandler(async (req, res, next) => {
             totalPosts: total,
             query
         }
+    });
+});
+
+
+export const likeunlikePost = asyncErrorHandler(async (req, res, next) => {
+    const { postId } = req.params;
+    const userId = req.user._id;
+
+    // Check if the post exists
+    const post = await Post.findById(postId);
+    if (!post) {
+        return next(new CustomError('Post not found', 404));
+    }    // Check if the user has already liked the post
+    const existingLike = await Like.findOne({ post: postId, likedBy: userId });
+
+    let isLiked = false;
+      if (existingLike) {
+        // Unlike: Remove the existing like
+        await existingLike.deleteOne();  // Use document deleteOne to trigger middleware
+        await post.updateStats();  // Ensure stats are updated
+    } else {
+        // Like: Create a new like
+        await Like.create({ post: postId, likedBy: userId });
+        isLiked = true;
+    }
+
+    res.status(200).json({
+        status: 'success',
+        message: `Post ${isLiked ? 'liked' : 'unliked'} successfully`,
+        data: { liked: isLiked }
     });
 });
 

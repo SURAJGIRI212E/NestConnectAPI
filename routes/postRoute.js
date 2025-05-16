@@ -7,7 +7,8 @@ import {
     getFeedPosts,
     getUserPosts,
     getComments,
-    searchPosts
+    searchPosts,
+    likeunlikePost
 } from '../controllers/postControllers.js';
 import isAuthenticated from '../middlewares/authMiddleware.js';
 import { uploadPostMedia } from '../middlewares/multerMiddleware.js';
@@ -34,5 +35,8 @@ router.get('/user/:userId', isAuthenticated, getUserPosts);
 
 // Comments Route
 router.get('/:postId/comments', isAuthenticated, getComments);
+
+//like and unlike routes
+router.post('/:postId/like', isAuthenticated, likeunlikePost);
 
 export default router;
