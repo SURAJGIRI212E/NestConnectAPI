@@ -10,6 +10,19 @@ import mongoose from 'mongoose';
 export const createPost = asyncErrorHandler(async (req, res, next) => {
     const { content, visibility, parentPost } = req.body;
     const mediaFiles = req.files;
+    const isPremium = req.user.premium;
+    const CONTENT_LIMITS = {
+        BASIC: 200,
+        PREMIUM: 500
+    };
+
+    // Validate content length based on user type
+    if (content && content.length > (isPremium ? CONTENT_LIMITS.PREMIUM : CONTENT_LIMITS.BASIC)) {
+        return next(new CustomError(
+            `Content length exceeds limit. ${isPremium ? 'Premium' : 'Basic'} users can post up to ${isPremium ? CONTENT_LIMITS.PREMIUM : CONTENT_LIMITS.BASIC} characters.`,
+            400
+        ));
+    }
 
     // Check if post has either content or media
     if (!content && (!mediaFiles || mediaFiles.length === 0)) {
@@ -96,7 +109,7 @@ export const createPost = asyncErrorHandler(async (req, res, next) => {
     });
 });
 
-// Get a single post
+// Get a single post by postId param
 export const getPost = asyncErrorHandler(async (req, res, next) => {
     const post = await Post.findById(req.params.postId)
         .populate('ownerid', 'username fullName avatar')
@@ -131,7 +144,7 @@ export const getPost = asyncErrorHandler(async (req, res, next) => {
     });
 });
 
-// Get user posts
+// Get user posts by userId param
 export const getUserPosts = asyncErrorHandler(async (req, res, next) => {
     const userId = req.params.userId;
     const page = parseInt(req.query.page) || 1;
@@ -170,7 +183,7 @@ export const getUserPosts = asyncErrorHandler(async (req, res, next) => {
     });
 });
 
-// Get feed posts
+// Get feed posts of current user
 export const getFeedPosts = asyncErrorHandler(async (req, res, next) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -248,9 +261,10 @@ export const getComments = asyncErrorHandler(async (req, res, next) => {
     });
 });
 
-// Update a post
+// Update a post by postId param
 export const updatePost = asyncErrorHandler(async (req, res, next) => {
     const { content } = req.body;
+    console.log("content", content)
     const post = await Post.findById(req.params.postId);
 
     if (!post) {
@@ -258,7 +272,8 @@ export const updatePost = asyncErrorHandler(async (req, res, next) => {
     }
 
     // Check ownership
-    if (post.ownerid.toString() !== req.user._id) {
+    console.log( req.user._id.toString(), post.ownerid.toString())
+    if (post.ownerid.toString() !== req.user._id.toString()) {
         return next(new CustomError('You can only edit your own posts', 403));
     }
 
@@ -292,16 +307,29 @@ export const deletePost = asyncErrorHandler(async (req, res, next) => {
     }
 
     // Check ownership
-    if (post.ownerid.toString() !== req.user._id) {
+    if (post.ownerid.toString() !== req.user._id.toString()) {
         return next(new CustomError('You can only delete your own posts', 403));
     }
 
     // Delete media from cloudinary if exists
     if (post.media && post.media.length > 0) {
-        const deletePromises = post.media.map(media => {
-            const publicId = media.url.split('/').pop().split('.')[0];
-            return deleteFromCloudinary(publicId);
+        const deletePromises = post.media.map(async (media) => {
+            try {
+                // Extract public ID from Cloudinary URL
+                // URL format: https://res.cloudinary.com/cloud-name/image/upload/v1234567/folder/filename
+                const parts = media.url.split('/upload/');
+                if (parts.length === 2) {
+                    // Remove version number and file extension
+                    const publicId = parts[1].split('/').slice(1).join('/').replace(/\.[^/.]+$/, '');
+                    // console.log('Attempting to delete:', publicId);
+                    await deleteFromCloudinary(publicId);
+                }
+            } catch (error) {
+                console.error('Failed to delete media:', media.url, error);
+            }
         });
+
+        // Wait for all media deletions to complete
         await Promise.all(deletePromises);
     }
 

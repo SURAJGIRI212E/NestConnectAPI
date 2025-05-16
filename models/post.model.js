@@ -80,7 +80,17 @@ postSchema.virtual('comments', {
 // Pre-save middleware
 postSchema.pre('save', async function(next) {
   // Handle hashtags and mentions
-  if (this.isModified('content')) {
+  if (this.isModified('content') && this.content) {
+    // Check edit chances before allowing edit
+    if (!this.isNew) {
+      if (this.edits.editchancesleft <= 0) {
+        return next(new Error('No edit chances left'));
+      }
+      this.edits.isedited = true;
+      this.edits.editedAt = new Date();
+      this.edits.editchancesleft -= 1; // Directly decrement without Math.max
+    }
+
     // Extract hashtags
     this.hashtags = (this.content.match(/#[a-zA-Z0-9_]+/g) || [])
       .map(tag => tag.slice(1).toLowerCase());
@@ -100,11 +110,6 @@ postSchema.pre('save', async function(next) {
         next(error);
       }
     }
-
-    // Handle edit tracking
-    this.edits.isedited = true;
-    this.edits.editedAt = new Date();
-    this.edits.editchancesleft = this.edits.editchancesleft - 1;
   }
 
   // Set edit window and depth for new posts
