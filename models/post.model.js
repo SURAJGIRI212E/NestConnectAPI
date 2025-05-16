@@ -1,12 +1,16 @@
 // models/Post.js
 import mongoose from "mongoose";
 
-const postSchema = new mongoose.Schema({
-  ownerid: { 
+const postSchema = new mongoose.Schema({  ownerid: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: "User", 
     required: true,
     index: true 
+  },
+  originalPost: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Post",
+    default: null
   },
   content: { 
     type: String,

@@ -111,6 +111,7 @@ export const createPost = asyncErrorHandler(async (req, res, next) => {
 
 // Get a single post by postId param
 export const getPost = asyncErrorHandler(async (req, res, next) => {
+    const userId = req.user._id;
     const post = await Post.findById(req.params.postId)
         .populate('ownerid', 'username fullName avatar')
         .populate('mentions', 'username fullName')
@@ -124,13 +125,24 @@ export const getPost = asyncErrorHandler(async (req, res, next) => {
 
     if (!post) {
         return next(new CustomError('Post not found', 404));
-    }    // Check if the post is visible to the user    // Check post visibility    console.log("current user id", req.user._id)
-    if (post.ownerid._id.toString() === req.user._id.toString()) {
+    }
+
+    // Check if either user has blocked the other
+    const user = await User.findById(userId);
+    const isBlocked = user.blockedUsers.includes(post.ownerid._id) || 
+                     (await User.findById(post.ownerid._id)).blockedUsers.includes(userId);
+
+    if (isBlocked) {
+        return next(new CustomError('Cannot view this post', 403));
+    }
+
+    // Check post visibility
+    if (post.ownerid._id.toString() === userId.toString()) {
         // User can always see their own posts
     } else if (post.visibility === 'followers') {
         // For other users' posts, check if following
         const Follow = mongoose.model('Follow');
-        const isFollowing = await Follow.isFollowing(req.user._id, post.ownerid._id);
+        const isFollowing = await Follow.isFollowing(userId, post.ownerid._id);
         if (!isFollowing) {
             return next(new CustomError('This post is only visible to followers', 403));
         }
@@ -145,22 +157,33 @@ export const getPost = asyncErrorHandler(async (req, res, next) => {
 // Get user posts by userId param
 export const getUserPosts = asyncErrorHandler(async (req, res, next) => {
     const userId = req.params.userId;
+    const currentUserId = req.user._id;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
 
     const user = await User.findById(userId);
     if (!user) {
         return next(new CustomError('User not found', 404));
-    }    // Build query based on ownership and following status
+    }
+
+    // Check if either user has blocked the other
+    const currentUser = await User.findById(currentUserId);
+    const isBlocked = currentUser.blockedUsers.includes(userId) || 
+                     user.blockedUsers.includes(currentUserId);
+
+    if (isBlocked) {
+        return next(new CustomError('Cannot view posts from this user', 403));
+    }
+
+    // Build query based on ownership and following status
     let query = { ownerid: userId };
-    if (userId.toString() !== req.user._id.toString()) {
+    if (userId !== currentUserId.toString()) {
         const Follow = mongoose.model('Follow');
-        const isFollowing = await Follow.isFollowing(req.user._id, userId);
+        const isFollowing = await Follow.isFollowing(currentUserId, userId);
         if (!isFollowing) {
             query.visibility = 'public';
         }
     }
-    // Note: No visibility filter when user is viewing their own posts
 
     const posts = await Post.find(query)
         .populate('ownerid', 'username fullName avatar')
@@ -183,46 +206,53 @@ export const getUserPosts = asyncErrorHandler(async (req, res, next) => {
 
 // Get feed posts of current user
 export const getFeedPosts = asyncErrorHandler(async (req, res, next) => {
+    const userId = req.user._id;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const Follow = mongoose.model('Follow');
+    const skip = (page - 1) * limit;
 
-    // Get IDs of users being followed
-    const following = await Follow.find({ follower: req.user._id })
-        .select('following');
+    // Get the user's blocked users and users who blocked them
+    const user = await User.findById(userId);
+    const blockedByOthers = await User.find({ blockedUsers: userId }).select('_id');
+    const mutuallyBlockedUserIds = [
+        ...user.blockedUsers,
+        ...blockedByOthers.map(u => u._id)
+    ];
+
+    // Get followed users
+    const following = await Follow.find({ follower: userId }).select('following');
     const followingIds = following.map(f => f.following);
-    followingIds.push(req.user._id); // Include user's own posts    // Find posts based on visibility and following status
-    const posts = await Post.find({
-        $or: [
-            { ownerid: req.user._id }, // Always show user's own posts
-            { visibility: 'public' }, // Show all public posts
-            { 
-                $and: [
-                    { ownerid: { $in: followingIds } },
-                    { visibility: 'followers' }
-                ]
-            } // Show followers-only posts from followed users
-        ]
-    })
-    .populate('ownerid', 'username fullName avatar')
-    .sort('-createdAt')
-    .skip((page - 1) * limit)
-    .limit(limit);
 
+    // Find posts from followed users that aren't blocked
+    const posts = await Post.find({
+        ownerid: { 
+            $in: followingIds, 
+            $nin: mutuallyBlockedUserIds 
+        }
+    })
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .populate('ownerid', 'username profilePicture')
+    .populate('originalPost');
+
+    // Get total count for pagination
     const total = await Post.countDocuments({
-        $or: [
-            { ownerid: { $in: followingIds } },
-            { visibility: 'public' }
-        ]
+        ownerid: { 
+            $in: followingIds, 
+            $nin: mutuallyBlockedUserIds 
+        }
     });
 
     res.status(200).json({
         status: 'success',
         data: {
             posts,
-            totalPages: Math.ceil(total / limit),
-            currentPage: page,
-            totalPosts: total
+            pagination: {
+                currentPage: page,
+                totalPages: Math.ceil(total / limit),
+                totalPosts: total
+            }
         }
     });
 });
@@ -230,31 +260,55 @@ export const getFeedPosts = asyncErrorHandler(async (req, res, next) => {
 // Get comments for a post/comment
 export const getComments = asyncErrorHandler(async (req, res, next) => {
     const { postId } = req.params;
+    const userId = req.user._id;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
 
-    const comments = await Post.find({ parentPost: postId })
-        .populate('ownerid', 'username fullName avatar')
+    const post = await Post.findById(postId)
+        .populate('ownerid')
         .populate({
-            path: 'comments', // This gets nested comments
-            populate: {
-                path: 'ownerid',
-                select: 'username fullName avatar'
-            }
-        })
-        .sort('-createdAt')
-        .skip((page - 1) * limit)
-        .limit(limit);
+            path: 'comments.user',
+            select: 'username profilePicture'
+        });
 
-    const total = await Post.countDocuments({ parentPost: postId });
+    if (!post) {
+        return next(new CustomError('Post not found', 404));
+    }
+
+    // Check if either user has blocked the other
+    const user = await User.findById(userId);
+    const isBlocked = user.blockedUsers.includes(post.ownerid._id) || 
+                     (await User.findById(post.ownerid._id)).blockedUsers.includes(userId);
+
+    if (isBlocked) {
+        return next(new CustomError('Cannot view comments on this post', 403));
+    }
+
+    // Get blocked users for filtering comments
+    const blockedByOthers = await User.find({ blockedUsers: userId }).select('_id');
+    const mutuallyBlockedUserIds = [
+        ...user.blockedUsers.map(id => id.toString()),
+        ...blockedByOthers.map(u => u._id.toString())
+    ];
+
+    // Filter out comments from blocked users
+    const filteredComments = post.comments.filter(comment => 
+        !mutuallyBlockedUserIds.includes(comment.user._id.toString())
+    );
+
+    // Apply pagination
+    const paginatedComments = filteredComments.slice(skip, skip + limit);
 
     res.status(200).json({
         status: 'success',
         data: {
-            comments,
-            totalPages: Math.ceil(total / limit),
-            currentPage: page,
-            totalComments: total
+            comments: paginatedComments,
+            pagination: {
+                currentPage: page,
+                totalPages: Math.ceil(filteredComments.length / limit),
+                totalComments: filteredComments.length
+            }
         }
     });
 });
@@ -349,6 +403,7 @@ export const deletePost = asyncErrorHandler(async (req, res, next) => {
 // Search posts
 export const searchPosts = asyncErrorHandler(async (req, res, next) => {
     const { query } = req.query;
+    const userId = req.user._id;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
 
@@ -356,15 +411,25 @@ export const searchPosts = asyncErrorHandler(async (req, res, next) => {
         return next(new CustomError('Search query is required', 400));
     }
 
+    // Get blocked users
+    const user = await User.findById(userId);
+    const blockedByOthers = await User.find({ blockedUsers: userId }).select('_id');
+    const mutuallyBlockedUserIds = [
+        ...user.blockedUsers,
+        ...blockedByOthers.map(u => u._id)
+    ];
+
     // Get IDs of users being followed for visibility check
     const Follow = mongoose.model('Follow');
-    const following = await Follow.find({ follower: req.user._id })
+    const following = await Follow.find({ follower: userId })
         .select('following');
     const followingIds = following.map(f => f.following);
 
     // Build search query
     const searchQuery = {
         $and: [
+            // Exclude blocked users
+            { ownerid: { $nin: mutuallyBlockedUserIds } },
             // Search in content or hashtags
             {
                 $or: [
@@ -376,7 +441,7 @@ export const searchPosts = asyncErrorHandler(async (req, res, next) => {
             {
                 $or: [
                     { visibility: 'public' }, // Public posts
-                    { ownerid: req.user._id }, // User's own posts
+                    { ownerid: userId }, // User's own posts
                     { 
                         $and: [
                             { visibility: 'followers' },
@@ -416,14 +481,25 @@ export const likeunlikePost = asyncErrorHandler(async (req, res, next) => {
     const userId = req.user._id;
 
     // Check if the post exists
-    const post = await Post.findById(postId);
+    const post = await Post.findById(postId).populate('ownerid');
     if (!post) {
         return next(new CustomError('Post not found', 404));
-    }    // Check if the user has already liked the post
+    }
+
+    // Check if either user has blocked the other
+    const user = await User.findById(userId);
+    const isBlocked = user.blockedUsers.includes(post.ownerid._id) || 
+                     (await User.findById(post.ownerid._id)).blockedUsers.includes(userId);
+
+    if (isBlocked) {
+        return next(new CustomError('Cannot interact with this post', 403));
+    }
+
+    // Check if the user has already liked the post
     const existingLike = await Like.findOne({ post: postId, likedBy: userId });
 
     let isLiked = false;
-      if (existingLike) {
+    if (existingLike) {
         // Unlike: Remove the existing like
         await existingLike.deleteOne();  // Use document deleteOne to trigger middleware
         await post.updateStats();  // Ensure stats are updated
@@ -439,4 +515,168 @@ export const likeunlikePost = asyncErrorHandler(async (req, res, next) => {
         data: { liked: isLiked }
     });
 });
+
+export const getOwnLikedPosts = asyncErrorHandler(async (req, res, next) => {   
+    const userId = req.user._id;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // Get blocked users
+    const user = await User.findById(userId);
+    const blockedByOthers = await User.find({ blockedUsers: userId }).select('_id');
+    const mutuallyBlockedUserIds = [
+        ...user.blockedUsers,
+        ...blockedByOthers.map(u => u._id)
+    ];
+
+    // Find liked posts, excluding those from blocked users
+    const likedPosts = await Like.find({ likedBy: userId })
+        .populate({
+            path: 'post',
+            populate: {
+                path: 'ownerid',
+                select: 'username profilePicture'
+            },
+            match: { ownerid: { $nin: mutuallyBlockedUserIds } }
+        })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit);
+
+    // Filter out null posts (from blocked users)
+    const posts = likedPosts
+        .map(like => like.post)
+        .filter(post => post !== null);
+
+    // Get total count for pagination (excluding blocked users' posts)
+    const total = await Like.countDocuments({
+        likedBy: userId,
+        post: {
+            $in: await Post.find({ ownerid: { $nin: mutuallyBlockedUserIds } }).select('_id')
+        }
+    });
+
+    res.status(200).json({
+        status: 'success',
+        data: {
+            posts,
+            pagination: {
+                currentPage: page,
+                totalPages: Math.ceil(total / limit),
+                totalPosts: total
+            }
+        }
+    });
+ 
+            });
+
+// Repost a post
+export const repost = asyncErrorHandler(async (req, res, next) => {
+    const { postId } = req.params;
+    const userId = req.user._id;
+
+    // Check if the original post exists
+    const originalPost = await Post.findById(postId).populate('ownerid');
+    if (!originalPost) {
+        return next(new CustomError('Post not found', 404));
+    }
+
+    // Check if either user has blocked the other
+    const user = await User.findById(userId);
+    const isBlocked = user.blockedUsers.includes(originalPost.ownerid._id) || 
+                     (await User.findById(originalPost.ownerid._id)).blockedUsers.includes(userId);
+
+    if (isBlocked) {
+        return next(new CustomError('Cannot repost this content', 403));
+    }
+
+    // Check if the user has already reposted this post
+    const existingRepost = await Post.findOne({
+        ownerid: userId,
+        isRepost: true,
+        originalPost: postId
+    });
+
+    if (existingRepost) {
+        return next(new CustomError('You have already reposted this post', 400));
+    }
+
+    // Create the repost
+    const repost = await Post.create({
+        ownerid: userId,
+        content: originalPost.content,
+        media: originalPost.media,
+        isRepost: true,
+        originalPost: postId
+    });
+
+    await originalPost.updateStats();  // Update original post stats
+
+    res.status(201).json({
+        status: 'success',
+        message: 'Post reposted successfully',
+        data: { repost }
+    });
+});
+
+// Get posts by hashtag
+export const getPostsByHashtag = asyncErrorHandler(async (req, res, next) => {
+    const { hashtag } = req.params;
+    const userId = req.user._id;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // Get blocked users
+    const user = await User.findById(userId);
+    const blockedByOthers = await User.find({ blockedUsers: userId }).select('_id');
+    const mutuallyBlockedUserIds = [
+        ...user.blockedUsers,
+        ...blockedByOthers.map(u => u._id)
+    ];
+
+    // Find posts with the hashtag, excluding blocked users
+    const posts = await Post.find({
+        hashtags: hashtag,
+        ownerid: { $nin: mutuallyBlockedUserIds }
+    })
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .populate('ownerid', 'username profilePicture')
+    .populate('originalPost');
+
+    // Get total count for pagination
+    const total = await Post.countDocuments({
+        hashtags: hashtag,
+        ownerid: { $nin: mutuallyBlockedUserIds }
+    });
+
+    res.status(200).json({
+        status: 'success',
+        data: {
+            posts,
+            pagination: {
+                currentPage: page,
+                totalPages: Math.ceil(total / limit),
+                totalPosts: total
+            }
+        }
+    });
+});
+
+
+export const getTrendingHashtags = asyncErrorHandler(async (req, res) => {
+  const hashtags = await Post.aggregate([
+    { $unwind: "$hashtags" },
+    { $group: { _id: "$hashtags", count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+    { $limit: 10 }
+  ]);
+
+  res.json({ success: true, hashtags });
+});
+
+
 
