@@ -3,6 +3,7 @@ import asyncErrorHandler from '../utilities/asyncErrorHandler.js';
 import CustomError from '../utilities/CustomError.js';
 import Follow from '../models/follow.model.js';
 import { uploadOnCloudinary, deleteFromCloudinary } from '../utilities/cloudinary.js';
+import mongoose from 'mongoose';
 
 // Get user profile by username
 export const getUserByUsername = asyncErrorHandler(async (req, res, next) => {
@@ -243,5 +244,76 @@ export const searchUsers = asyncErrorHandler(async (req, res, next) => {
             totalUsers: total
         },
         message: "Users fetched successfully"
+    });
+});
+
+// Get suggested users for the current user
+export const getSuggestedUsers = asyncErrorHandler(async (req, res) => {
+    const userId = req.user._id;
+    const limit = parseInt(req.query.limit) || 5;
+
+    // Get users that current user is following
+    const following = await Follow.find({ follower: userId })
+        .select('following');
+    const followingIds = following.map(f => f.following);
+
+    // Get users who blocked the current user and users blocked by current user
+    const user = await User.findById(userId);
+    const blockedByOthers = await User.find({ blockedUsers: userId })
+        .select('_id');
+    const mutuallyBlockedUserIds = [
+        ...user.blockedUsers,
+        ...blockedByOthers.map(u => u._id)
+    ];
+
+    // Exclude the current user, followed users, and blocked users
+    const excludeIds = [
+        userId,
+        ...followingIds,
+        ...mutuallyBlockedUserIds
+    ];
+
+    // Find users with most followers who aren't in the exclude list
+    const suggestedUsers = await User.aggregate([
+        {
+            $match: {
+                _id: { $nin: excludeIds.map(id => new mongoose.Types.ObjectId(id)) }
+            }
+        },
+        {
+            // Look up follower count for each user
+            $lookup: {
+                from: 'follows',
+                localField: '_id',
+                foreignField: 'following',
+                as: 'followers'
+            }
+        },
+        {
+            $addFields: {
+                followersCount: { $size: '$followers' }
+            }
+        },
+        {
+            $project: {
+                username: true,
+                fullName: true,
+                avatar: true,
+                bio: true,
+                followersCount: true
+            }
+        },
+        {
+            $sort: { followersCount: -1 }
+        },
+        {
+            $limit: limit
+        }
+    ]);
+
+    return res.status(200).json({
+        status: 'success',
+        data: suggestedUsers,
+        message: "Suggested users fetched successfully"
     });
 });

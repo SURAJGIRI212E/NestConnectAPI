@@ -8,6 +8,7 @@ import authRoute from './routes/authRoute.js';
 import userRoute from './routes/userRoute.js';
 import postRoute from './routes/postRoute.js';
 import followRoute from './routes/followRoute.js';
+import notiRoute from './routes/notiRoute.js';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 
@@ -32,6 +33,7 @@ app.use('/api/auth', authRoute);
 app.use('/api/users', userRoute);
 app.use('/api/posts', postRoute);
 app.use('/api/follow', followRoute);
+app.use('/api/notifications', notiRoute);
 
 // 404 Route Handler
 app.all('*', (req, res, next) => {

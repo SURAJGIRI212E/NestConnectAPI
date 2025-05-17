@@ -2,6 +2,7 @@ import Follow from '../models/follow.model.js';
 import User from '../models/user.model.js';
 import asyncErrorHandler from '../utilities/asyncErrorHandler.js';
 import CustomError from '../utilities/CustomError.js';
+import { createNotification } from './notiControllers.js';
 
 // Follow a user
 export const followUser = asyncErrorHandler(async (req, res, next) => {
@@ -29,6 +30,14 @@ export const followUser = asyncErrorHandler(async (req, res, next) => {
     await Follow.create({
         follower: followerId,
         following: userToFollow._id
+    });
+
+    // Create notification for the user being followed
+    const follower = await User.findById(followerId);
+    await createNotification({
+        recipient: userToFollow._id,
+        type: 'follow',
+        message: `${follower.username} started following you`
     });
 
     res.status(200).json({

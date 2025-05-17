@@ -5,6 +5,7 @@ import CustomError from '../utilities/CustomError.js';
 import asyncErrorHandler from '../utilities/asyncErrorHandler.js';
 import { uploadOnCloudinary, deleteFromCloudinary } from '../utilities/cloudinary.js';
 import mongoose from 'mongoose';
+import { createNotification } from './notiControllers.js';
 
 // Create a new post or comment
 export const createPost = asyncErrorHandler(async (req, res, next) => {
@@ -49,7 +50,8 @@ export const createPost = asyncErrorHandler(async (req, res, next) => {
         ownerid: req.user._id,
         content,
         media: mediaUrls,
-        visibility: visibility || 'public'
+        visibility: visibility || 'public',
+        _creatorUsername: req.user.username // Add username for mention notifications
     };
 
     // Handle commenting functionality
@@ -64,9 +66,10 @@ export const createPost = asyncErrorHandler(async (req, res, next) => {
         // Validate comment nesting depth
         if (parentPostDoc.depth >= 2) {
             return next(new CustomError('Maximum comment depth reached', 400));
-        }        // Check comment permissions
+        }
+
+        // Check comment permissions
         if (parentPostDoc.visibility === 'followers') {
-            // If it's not the post owner
             if (parentPostDoc.ownerid.toString() !== req.user._id.toString()) {
                 const Follow = mongoose.model('Follow');
                 const isFollowing = await Follow.isFollowing(req.user._id, parentPostDoc.ownerid);
@@ -74,15 +77,24 @@ export const createPost = asyncErrorHandler(async (req, res, next) => {
                     return next(new CustomError('Cannot comment on this post', 403));
                 }
             }
-            // Note: Post owner can always comment on their own posts
         }
 
         // Set comment-specific data
         postData.parentPost = parentPost;
         postData.visibility = 'public'; // All comments are public
+
+        // Create notification for the post owner (if it's not their own comment)
+        if (parentPostDoc.ownerid.toString() !== req.user._id.toString()) {
+            await createNotification({
+                recipient: parentPostDoc.ownerid,
+                type: 'comment',
+                post: parentPost,
+                message: `${req.user.username} commented on your post`
+            });
+        }
     }
 
-    // Create the post
+    // Create the post (mentions will be handled in the pre-save middleware)
     const post = await Post.create(postData);
 
     // Update parent's comment count if this is a comment
@@ -95,6 +107,7 @@ export const createPost = asyncErrorHandler(async (req, res, next) => {
     // Populate necessary fields
     await post.populate([
         { path: 'ownerid', select: 'username fullName avatar' },
+        { path: 'mentions', select: 'username fullName' },
         { 
             path: 'parentPost',
             select: 'content ownerid depth',
@@ -507,6 +520,16 @@ export const likeunlikePost = asyncErrorHandler(async (req, res, next) => {
         // Like: Create a new like
         await Like.create({ post: postId, likedBy: userId });
         isLiked = true;
+
+        // Create notification for post owner (if it's not their own post)
+        if (post.ownerid._id.toString() !== userId.toString()) {
+            await createNotification({
+                recipient: post.ownerid._id,
+                type: 'like',
+                post: postId,
+                message: `${user.username} liked your post`
+            });
+        }
     }
 
     res.status(200).json({
@@ -612,6 +635,16 @@ export const repost = asyncErrorHandler(async (req, res, next) => {
     });
 
     await originalPost.updateStats();  // Update original post stats
+
+    // Create notification for original post owner (if it's not their own repost)
+    if (originalPost.ownerid._id.toString() !== userId.toString()) {
+        await createNotification({
+            recipient: originalPost.ownerid._id,
+            type: 'repost',
+            post: postId,
+            message: `${user.username} reposted your post`
+        });
+    }
 
     res.status(201).json({
         status: 'success',

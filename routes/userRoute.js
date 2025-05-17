@@ -6,7 +6,8 @@ import {
     getUserBookmarks,
     toggleBlockUser,
     getBlockedUsers,
-    searchUsers
+    searchUsers,
+    getSuggestedUsers
 } from '../controllers/userControllers.js';
 import isAuthenticated from '../middlewares/authMiddleware.js';
 import { uploadUserProfile } from '../middlewares/multerMiddleware.js';
@@ -27,6 +28,9 @@ router.post('/toogleblock/:userId', isAuthenticated, toggleBlockUser);
 
 // Search Routes
 router.get('/search', isAuthenticated, searchUsers);
+
+// Suggested Users Route
+router.get('/suggested', isAuthenticated, getSuggestedUsers);
 
 export default router;
 

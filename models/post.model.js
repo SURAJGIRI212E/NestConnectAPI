@@ -1,5 +1,6 @@
 // models/Post.js
 import mongoose from "mongoose";
+import { createNotification } from '../controllers/notiControllers.js';
 
 const postSchema = new mongoose.Schema({  ownerid: { 
     type: mongoose.Schema.Types.ObjectId, 
@@ -83,55 +84,73 @@ postSchema.virtual('comments', {
 
 // Pre-save middleware
 postSchema.pre('save', async function(next) {
-  // Handle hashtags and mentions
-  if (this.isModified('content') && this.content) {
-    // Check edit chances before allowing edit
-    if (!this.isNew) {
-      if (this.edits.editchancesleft <= 0) {
-        return next(new Error('No edit chances left'));
-      }
-      this.edits.isedited = true;
-      this.edits.editedAt = new Date();
-      this.edits.editchancesleft -= 1; // Directly decrement without Math.max
+    // Handle hashtags and mentions
+    if (this.isModified('content') && this.content) {
+        // Check edit chances before allowing edit
+        if (!this.isNew) {
+            if (this.edits.editchancesleft <= 0) {
+                return next(new Error('No edit chances left'));
+            }
+            this.edits.isedited = true;
+            this.edits.editedAt = new Date();
+            this.edits.editchancesleft -= 1;
+        }
+
+        // Extract hashtags
+        this.hashtags = (this.content.match(/#[a-zA-Z0-9_]+/g) || [])
+            .map(tag => tag.slice(1).toLowerCase());
+        
+        // Extract and process mentions
+        const mentionUsernames = [...new Set((this.content.match(/@[a-zA-Z0-9_]+/g) || [])
+            .map(mention => mention.slice(1)))];
+        
+        if (mentionUsernames.length > 0) {
+            try {
+                const User = mongoose.model('User');
+                const mentionedUsers = await User.find({ 
+                    username: { $in: mentionUsernames } 
+                });
+                
+                // Set mentions array
+                this.mentions = mentionedUsers.map(user => user._id);
+
+                // Create notifications for mentioned users if this is a new post
+                if (this.isNew) {
+                    for (const user of mentionedUsers) {
+                        // Don't notify if it's a self-mention or if the user has blocked the poster
+                        if (user._id.toString() !== this.ownerid.toString() && 
+                            !user.blockedUsers?.includes(this.ownerid)) {
+                            await createNotification({
+                                recipient: user._id,
+                                type: 'mention',
+                                post: this._id,
+                                message: `${this._creatorUsername} mentioned you in a post`
+                            });
+                        }
+                    }
+                }
+            } catch (error) {
+                next(error);
+            }
+        }
     }
 
-    // Extract hashtags
-    this.hashtags = (this.content.match(/#[a-zA-Z0-9_]+/g) || [])
-      .map(tag => tag.slice(1).toLowerCase());
-    
-    // Extract mentions
-    const mentionUsernames = (this.content.match(/@[a-zA-Z0-9_]+/g) || [])
-      .map(mention => mention.slice(1));
-    
-    if (mentionUsernames.length > 0) {
-      try {
-        const User = mongoose.model('User');
-        const mentionedUsers = await User.find({ 
-          username: { $in: mentionUsernames } 
-        });
-        this.mentions = mentionedUsers.map(user => user._id);
-      } catch (error) {
-        next(error);
-      }
+    // Set edit window and depth for new posts
+    if (this.isNew) {
+        const createdTime = this.createdAt || new Date();
+        this.edits.editvalidtill = new Date(createdTime.getTime() + 15 * 60 * 1000);
+
+        // Set depth based on parent post
+        if (this.parentPost) {
+            const ParentPost = mongoose.model('Post');
+            const parent = await ParentPost.findById(this.parentPost);
+            if (parent) {
+                this.depth = parent.depth + 1;
+            }
+        }
     }
-  }
 
-  // Set edit window and depth for new posts
-  if (this.isNew) {
-    const createdTime = this.createdAt || new Date();
-    this.edits.editvalidtill = new Date(createdTime.getTime() + 15 * 60 * 1000);
-
-    // Set depth based on parent post
-    if (this.parentPost) {
-      const ParentPost = mongoose.model('Post');
-      const parent = await ParentPost.findById(this.parentPost);
-      if (parent) {
-        this.depth = parent.depth + 1;
-      }
-    }
-  }
-
-  next();
+    next();
 });
 
 // Methods
