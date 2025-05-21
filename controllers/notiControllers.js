@@ -102,6 +102,18 @@ export const deleteNotification = asyncErrorHandler(async (req, res, next) => {
     });
 });
 
+//Delete all notifications
+export const deleteAllNotifications = asyncErrorHandler(async (req, res) => {
+    const userId = req.user._id;
+
+    await Notification.deleteMany({ recipient: userId });
+
+    res.status(200).json({
+        status: 'success',
+        message: 'All notifications deleted successfully'
+    });
+});
+
 // Helper function to create a new notification (for internal use)
 export const createNotification = async ({
     recipient,
