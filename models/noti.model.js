@@ -17,7 +17,7 @@ const notificationSchema = new mongoose.Schema({
   },
   post: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Tweet'
+    ref: 'Post'
   },
   read: {
     type: Boolean,

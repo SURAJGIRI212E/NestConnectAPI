@@ -15,7 +15,7 @@ export const getNotifications = asyncErrorHandler(async (req, res) => {
         .limit(limit)
         .populate('recipient', 'username avatar')
         .populate('post', 'content');
-
+console.log(notifications)
     const total = await Notification.countDocuments({ recipient: userId });
 
     res.status(200).json({

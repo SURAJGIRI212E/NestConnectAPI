@@ -103,7 +103,7 @@ postSchema.pre('save', async function(next) {
         // Extract and process mentions
         const mentionUsernames = [...new Set((this.content.match(/@[a-zA-Z0-9_]+/g) || [])
             .map(mention => mention.slice(1)))];
-        
+        console.log(mentionUsernames);
         if (mentionUsernames.length > 0) {
             try {
                 const User = mongoose.model('User');
