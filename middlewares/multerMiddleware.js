@@ -32,11 +32,7 @@ const fileFilter = (allowed) => (req, file, cb) => {
   cb(new CustomError(`Only ${allowed.join('/')} files are allowed`, 400));
 };
 
-// Get size limit based on user type
-const getLimit = (req, type) => {
-  const premium = req.user?.premium;
-  return premium ? LIMITS.premium[type] : LIMITS.basic[type];
-};
+
 
 // Profile upload (avatar & cover)
 export const uploadUserProfile = multer({
@@ -117,6 +113,72 @@ export const uploadPostMedia = (req, res, next) => {
             `File "${file.originalname}" is too large. ${type === 'image' 
               ? `Images must be under ${maxSize / (1024 * 1024)}MB` 
               : `Videos must be under ${maxSize / (1024 * 1024)}MB`}`, 400
+          ));
+        }
+      }
+    }
+    
+    next();
+  });
+};
+
+// Chat image upload (max 4 images)
+export const uploadChatImages = (req, res, next) => {
+  const upload = multer({
+    storage,
+    limits: {
+      files: 4 // Max 4 images per message
+    },
+    fileFilter: (req, file, cb) => {
+      const type = file.mimetype.split('/')[0];
+      const ext = file.originalname.toLowerCase().split('.').pop();
+      
+      // Only allow images
+      if (type !== 'image') {
+        return cb(new CustomError('Only image files are allowed in chat', 400));
+      }
+
+      // Check file extension
+      if (!FILE_TYPES[type]?.test(ext)) {
+        return cb(new CustomError('Invalid image format', 400));
+      }
+
+      // Set file size limit
+      const maxSize = LIMITS.basic.image; // Using basic image limit for all users
+      file.sizeLimit = maxSize;
+
+      cb(null, true);
+    }
+  }).array('images', 4);
+
+  // Handle upload
+  upload(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_COUNT') {
+        return next(new CustomError('Maximum 4 images allowed per message', 400));
+      }
+      return next(new CustomError(err.message, 400));
+    }
+    if (err) {
+      return next(new CustomError(err.message, 400));
+    }
+
+    // Check each file's size after upload
+    if (req.files) {
+      for (const file of req.files) {
+        if (file.size > LIMITS.basic.image) {
+          // Delete all uploaded files if any file is too large
+          req.files.forEach(f => {
+            try {
+              fs.unlinkSync(f.path);
+            } catch (e) {
+              console.error('Error deleting file:', e);
+            }
+          });
+
+          return next(new CustomError(
+            `File "${file.originalname}" is too large. Images must be under ${LIMITS.basic.image / (1024 * 1024)}MB`, 
+            400
           ));
         }
       }

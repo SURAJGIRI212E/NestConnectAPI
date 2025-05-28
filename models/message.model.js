@@ -19,14 +19,17 @@ const messageSchema = new mongoose.Schema({
       return !this.media;
     }
   },
-  media: {
+  media:[{
     url: String,
     type: {
       type: String,
-      enum: ['image', 'video', 'audio']
+      enum: ['image'],
     }
-  },
-  isRead: { type: Boolean, default: false },
+  }],
+  readBy: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User"
+  }],
   deliveryStatus: {
     type: String,
     enum: ['sent', 'delivered', 'read'],
@@ -45,15 +48,16 @@ messageSchema.post('save', async function() {
   const conversation = await mongoose.model('Conversation').findById(this.conversationId);
   if (conversation) {
     conversation.lastMessage = this._id;
-    const recipientId = conversation.participant1.equals(this.senderId) 
-      ? conversation.participant2 
-      : conversation.participant1;
-    
-    const currentCount = conversation.unreadCount.get(recipientId.toString()) || 0;
-    conversation.unreadCount.set(recipientId.toString(), currentCount + 1);
-    
     await conversation.save();
   }
+});
+
+// Validate maximum 4 images
+messageSchema.pre('save', function(next) {
+  if (this.media && this.media.length > 4) {
+    next(new Error('Maximum 4 images allowed per message'));
+  }
+  next();
 });
 
 const MessageModel = mongoose.model("Message", messageSchema);

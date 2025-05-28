@@ -94,6 +94,18 @@ const login = asyncErrorHandler(async (req, res, next) => {
     });
 });
 
+export const getMe = asyncErrorHandler(async (req, res) => {
+    const user = await User.findById(req.user._id).select('-password');
+    
+    if (!user) {
+      throw new CustomError('User not found', 404);
+    }
+  
+    res.status(200).json({
+      status: 'success',
+      data: user
+    });
+  }); 
 
 const logout = asyncErrorHandler(async (req, res, next) => {
     // Clear cookies

@@ -58,7 +58,9 @@ const isAuthenticated = asyncErrorHandler(async (req, res, next) => {
             maxAge: 15 * 60 * 1000 // 15 minutes
         });
 
-        
+        // Set req.user after successful refresh token verification
+        req.user = {_id:user._id, username: user.username,premium: user.isPremium};
+
         next();
 
     } catch (error) {

@@ -2,15 +2,17 @@
 import mongoose from "mongoose";
 
 const conversationSchema = new mongoose.Schema({
-  participant1: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: "User", 
-    required: true 
-  },
-  participant2: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: "User", 
-    required: true 
+  participants: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true
+    }
+  ],
+  typingUsers: {
+    type: Map,
+    of: Boolean,
+    default: new Map()
   },
   lastMessage: {
     type: mongoose.Schema.Types.ObjectId,
@@ -30,7 +32,7 @@ const conversationSchema = new mongoose.Schema({
 });
 
 // Indexes for faster queries
-conversationSchema.index({ participant1: 1, participant2: 1 }, { unique: true });
+conversationSchema.index({ participants: 1 }, { unique: true });
 conversationSchema.index({ updatedAt: -1 });
 
 // Method to get messages
@@ -53,6 +55,13 @@ conversationSchema.methods.markAsRead = async function(userId) {
     { isRead: true }
   );
 };
+
+conversationSchema.pre('save', function(next) {
+  if (this.isModified('participants') || this.isNew) {
+    this.participants.sort(); // Sort the participant IDs
+  }
+  next();
+});
 
 const ConversationModel = mongoose.model("Conversation", conversationSchema);
 export default ConversationModel;
