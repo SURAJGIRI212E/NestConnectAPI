@@ -124,6 +124,41 @@ export const setupChatSocket = (io) => {
       }
     });
 
+    // Handle message deletion
+    socket.on('deleteMessage', async ({ messageId, conversationId }) => {
+      try {
+        // Find message and verify ownership
+        const message = await Message.findById(messageId);
+        if (!message) {
+          socket.emit('error', { message: 'Message not found' });
+          return;
+        }
+
+        // Only allow sender to delete their own messages
+        if (message.senderId.toString() !== socket.handshake.auth.userId) {
+          socket.emit('error', { message: 'Not authorized to delete this message' });
+          return;
+        }
+
+        // Delete message
+        await message.deleteOne();
+console.log("message deleted", messageId);
+        // Notify conversation participants about message deletion
+        const conversation = await Conversation.findById(conversationId);
+        if (conversation) {
+          conversation.participants.forEach(participantId => {
+            const participantSocket = onlineUsers.get(participantId.toString());
+            if (participantSocket) {
+              io.to(participantSocket).emit('messageDeleted', { messageId, conversationId });
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Error deleting message:', error);
+        socket.emit('error', { message: 'Failed to delete message' });
+      }
+    });
+
     // Handle typing status
     socket.on('typing', ({ senderId, receiverId, conversationId }) => {
       const receiverSocket = onlineUsers.get(receiverId);
