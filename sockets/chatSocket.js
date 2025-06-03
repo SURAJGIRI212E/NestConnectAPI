@@ -247,5 +247,8 @@ console.log("message deleted", messageId);
         console.error('Error in conversation deletion notification:', error);
       }
     });
+
+    // Video call events
+   
   });
 };

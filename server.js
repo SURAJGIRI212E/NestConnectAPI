@@ -22,9 +22,11 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    origin: ['http://localhost:3000', process.env.CLIENT_UR, 'exp://192.168.1.102:19000'],
     methods: ['GET', 'POST'],
-    credentials: true
+    credentials: true,
+     pingTimeout: 60000, // Increase ping timeout for mobile
+  transports: ['websocket', 'polling'] // Enable both WebSocket and polling
   }
 });
 
@@ -34,8 +36,9 @@ const PORT = process.env.PORT || 5000;
 app.use(express.json());
 app.use(express.static('public')); // Serve static files from the 'public' directory
 app.use(cors({
-  origin: 'http://localhost:3000', // Your frontend URL
-  credentials: true
+  origin: ['http://localhost:3000', process.env.CLIENT_URL, 'exp://192.168.1.102:19000'],
+  credentials: true,
+ 
 }));
 app.use(cookieParser());
 
