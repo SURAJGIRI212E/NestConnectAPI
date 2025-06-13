@@ -11,7 +11,7 @@ export const getUserByUsername = asyncErrorHandler(async (req, res, next) => {
     const loggedInUserId = req.user._id;
   
     const user = await User.findOne({ username })
-      .select('-password -blockedUsers -bookmarks -passwordChangeAt ');
+      .select('fullName username email bio avatar coverImage messagePreference isOnline lastActive createdAt updatedAt');
   
     if (!user) {
       return next(new CustomError('User not found', 404));
@@ -316,4 +316,29 @@ export const getSuggestedUsers = asyncErrorHandler(async (req, res) => {
         data: suggestedUsers,
         message: "Suggested users fetched successfully"
     });
+});
+
+export const updateMessagePreference = asyncErrorHandler(async (req, res, next) => {
+  const { messagePreference } = req.body;
+
+  if (!messagePreference) {
+    return next(new CustomError('Message preference is required', 400));
+  }
+
+  const allowedPreferences = ['everyone', 'followers', 'following', 'mutualFollowers', 'no one'];
+  if (!allowedPreferences.includes(messagePreference)) {
+    return next(new CustomError('Invalid message preference', 400));
+  }
+
+  const updatedUser = await User.findByIdAndUpdate(
+    req.user._id,
+    { $set: { messagePreference } },
+    { new: true, runValidators: true }
+  ).select('messagePreference');
+
+  res.status(200).json({
+    status: 'success',
+    data: updatedUser.messagePreference,
+    message: 'Message preference updated successfully'
+  });
 });

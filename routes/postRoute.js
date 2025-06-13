@@ -18,13 +18,13 @@ import isAuthenticated from '../middlewares/authMiddleware.js';
 import { uploadPostMedia } from '../middlewares/multerMiddleware.js';
 
 const router = express.Router();
-// Get posts by hashtag
+// Get posts by hashtag query
 router.get('/hashtag/:hashtag', isAuthenticated, getPostsByHashtag);
 
 //Get trending hashtags
 router.get('/trending-hashtags', isAuthenticated, getTrendingHashtags);
 
-// Search Route
+// Search post by
 router.get('/search', isAuthenticated, searchPosts);
 
 // Feed Routes
@@ -42,7 +42,7 @@ router.route('/:postId')
     .patch(isAuthenticated, updatePost)
     .delete(isAuthenticated, deletePost);
 
-// User Posts Route
+// any User Posts Route
 router.get('/user/:userId', isAuthenticated, getUserPosts);
 
 // Comments Route

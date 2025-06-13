@@ -1,6 +1,7 @@
 import User from '../models/user.model.js';
 import Conversation from '../models/conversation.model.js';
 import Message from '../models/message.model.js';
+import { canMessageUser, canVideoCall } from '../services/permissionService.js';
 
 const onlineUsers = new Map(); // userId -> socketId
 const userSockets = new Map(); // userId -> Set of socket IDs
@@ -19,6 +20,7 @@ const updateUserOnlineStatus = async (userId, isOnline) => {
 export const setupChatSocket = (io) => {
   io.on('connection', async (socket) => {
     const userId = socket.handshake.auth.userId;
+    console.log("userid connecetd",userId,socket.id)
     if (!userId) return;
 
     // Handle user connection
@@ -79,6 +81,12 @@ export const setupChatSocket = (io) => {
     // Handle message sending
     socket.on('sendMessage', async ({ senderId, receiverId, message, conversationId }) => {
       try {
+        const { canInteract, reason } = await canMessageUser(senderId, receiverId);
+        if (!canInteract) {
+          socket.emit('error', { message: reason || 'You cannot send messages to this user.' });
+          return;
+        }
+
         // Create and save message
         const newMessage = await Message.create({
           conversationId,
@@ -249,6 +257,77 @@ console.log("message deleted", messageId);
     });
 
     // Video call events
-   
+    socket.on('callUser', async ({ targetUserId, from }) => {
+      console.log(`User ${socket.handshake.auth.userId} calling user ${targetUserId}`);
+      const { canInteract, reason } = await canVideoCall(from._id, targetUserId);
+      if (!canInteract) {
+        console.log({ message: reason || 'You cannot video call this user.' })
+        socket.emit('error', { message: reason || 'You cannot video call this user.' });
+        return;
+      }
+      const targetUserSocketIds = userSockets.get(targetUserId);
+      console.log(targetUserSocketIds)
+      if (targetUserSocketIds) {
+        targetUserSocketIds.forEach(socketId => {
+          console.log("inside foreach",socketId)
+          io.to(socketId).emit('incomingCall', { from, signal: socket.id }); // Sending caller's socket ID as initial signal
+        });
+        // Optionally, notify the caller that the request was sent
+        socket.emit('callRequestSent', { to: targetUserId });
+      } else {
+        console.log(`Target user ${targetUserId} not online.`);
+        socket.emit('userNotOnline', { targetUserId });
+      }
+    });
+
+    socket.on('answerCall', ({ signal, to, from }) => {
+      console.log(`User ${socket.handshake.auth.userId} answering call to user ${to}`);
+      const callerSocketId = signal; // The initial signal from callUser was the caller's socket ID
+      if (callerSocketId) {
+        io.to(callerSocketId).emit('callAccepted', { signal, to: from }); // Send answer signal and receiver's user object back to caller
+        // Also send the answer signal to the receiver's other sockets if any
+         const receiverSocketIds = userSockets.get(from._id);
+         if(receiverSocketIds) {
+            receiverSocketIds.forEach(socketId => {
+                if(socketId !== socket.id) { // Don't resend to the socket that just answered
+                    io.to(socketId).emit('callAccepted', { signal, to: from });
+                }
+            });
+         }
+      } else {
+         console.log(`Caller socket ID not found for answering call to user ${to}`);
+      }
+    });
+
+    socket.on('rejectCall', ({ to }) => {
+      console.log(`User ${socket.handshake.auth.userId} rejecting call from user ${to}`);
+      const callerSocketIds = userSockets.get(to); // 'to' here is the caller's user ID
+      if (callerSocketIds) {
+         callerSocketIds.forEach(socketId => {
+           io.to(socketId).emit('callRejected', { to: socket.handshake.auth.userId }); // Send receiver's user ID back to caller
+         });
+      }
+    });
+
+    socket.on('hangUp', ({ to }) => {
+      console.log(`User ${socket.handshake.auth.userId} hanging up call with user ${to}`);
+       const otherUserSocketIds = userSockets.get(to); // 'to' here is the other user's ID
+       if (otherUserSocketIds) {
+          otherUserSocketIds.forEach(socketId => {
+            io.to(socketId).emit('callEnded');
+          });
+       }
+    });
+
+    socket.on('sendingSignal', ({ targetUserId, signal }) => {
+      console.log(`User ${socket.handshake.auth.userId} sending signal to user ${targetUserId}`);
+      const targetUserSocketIds = userSockets.get(targetUserId);
+      if (targetUserSocketIds) {
+        targetUserSocketIds.forEach(socketId => {
+          // Send signal to all sockets of the target user
+          io.to(socketId).emit('returningSignal', { signal });
+        });
+      }
+    });
   });
 };

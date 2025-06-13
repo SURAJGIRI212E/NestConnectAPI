@@ -25,6 +25,11 @@ const userSchema = new mongoose.Schema({
     type: Date, 
     default: Date.now 
   },
+  messagePreference: {
+    type: String,
+    enum: ['everyone', 'followers', 'following', 'mutualFollowers', 'no one'],
+    default: 'everyone'
+  },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });

@@ -1,7 +1,8 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import { createServer } from 'http';
+import fs from 'fs';
+import { createServer } from 'https';
 import { Server } from 'socket.io';
 import connectDB from './config/db.js';
 import CustomError from './utilities/CustomError.js';
@@ -18,11 +19,15 @@ import cookieParser from 'cookie-parser';
 
 dotenv.config();
 
+const key = fs.readFileSync('cert.key');
+const cert = fs.readFileSync('cert.crt');
+
 const app = express();
-const httpServer = createServer(app);
+const httpServer = createServer({key, cert}, app);
+console.log("client url",process.env.CLIENT_URL)
 const io = new Server(httpServer, {
   cors: {
-    origin: ['http://localhost:3000', process.env.CLIENT_UR, 'exp://192.168.1.102:19000'],
+    origin: ['http://localhost:3000', process.env.CLIENT_URL, 'exp://192.168.1.102:19000'],
     methods: ['GET', 'POST'],
     credentials: true,
      pingTimeout: 60000, // Increase ping timeout for mobile
@@ -34,7 +39,8 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(express.json());
-app.use(express.static('public')); // Serve static files from the 'public' directory
+app.use(express.static('public'));// Serve static files from the 'public' directory
+// app.use(express.static(__dirname)) 
 app.use(cors({
   origin: ['http://localhost:3000', process.env.CLIENT_URL, 'exp://192.168.1.102:19000'],
   credentials: true,
