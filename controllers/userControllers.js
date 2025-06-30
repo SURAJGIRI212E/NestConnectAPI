@@ -4,8 +4,10 @@ import CustomError from '../utilities/CustomError.js';
 import Follow from '../models/follow.model.js';
 import { uploadOnCloudinary, deleteFromCloudinary } from '../utilities/cloudinary.js';
 import mongoose from 'mongoose';
+import { addInteractionFlags } from '../controllers/postControllers.js';
+import { getCurrentUserInteractionData } from '../utilities/userInteractionUtils.js';
 
-// Get user profile by username
+// Get user profile by username done
 export const getUserByUsername = asyncErrorHandler(async (req, res, next) => {
     const { username } = req.params;
     const loggedInUserId = req.user._id;
@@ -17,24 +19,29 @@ export const getUserByUsername = asyncErrorHandler(async (req, res, next) => {
       return next(new CustomError('User not found', 404));
     }
   
-    const [followersCount, followingCount, isFollowing] = await Promise.all([
+    const [followersCount, followingCount, isFollowing, isBlockedByCurrentUser] = await Promise.all([
       Follow.getFollowersCount(user._id),
       Follow.getFollowingCount(user._id),
-      Follow.isFollowing(loggedInUserId, user._id)
+      Follow.isFollowing(loggedInUserId, user._id),
+      Follow.isBlocked(loggedInUserId, user._id)
     ]);
   
     res.status(200).json({
       status: 'success',
       data: {
-        user,
+        user: {
+          ...user.toObject(), // Convert Mongoose document to plain object
+          isFollowingByCurrentUser: isFollowing,
+          isBlockedByCurrentUser: isBlockedByCurrentUser,
         followersCount,
         followingCount,
-        isFollowing
+        },
+       
       }
     });
   });
 
-// Update user profile
+// Update user profile done
 export const updateUserProfile = asyncErrorHandler(async (req, res, next) => {
     const { fullName, bio } = req.body;
     const avatarFile = req.files?.avatar;
@@ -66,7 +73,7 @@ export const updateUserProfile = asyncErrorHandler(async (req, res, next) => {
             // Delete old avatar if it exists and is not the default avatar
             if (currentUser.avatar && !currentUser.avatar.includes('sampleprofile')) {
                 const oldAvatarId = currentUser.avatar.split('/').pop().split('.')[0];
-                console.log(oldAvatarId)
+             
                 await deleteFromCloudinary(oldAvatarId);
             }
         }
@@ -123,6 +130,11 @@ export const toggleBookmark = asyncErrorHandler(async (req, res, next) => {
         { new: true }
     ).select("bookmarks");
 
+    // After updating bookmarks, ensure the frontend can reflect the change immediately for the bookmark page.
+    // We will not add `addInteractionFlags` here directly as it's a mutation, not a query of posts.
+    // The `useToggleBookmarkMutation` in frontend invalidates the `userBookmarks` query on success, 
+    // which will trigger a re-fetch with the correct flags.
+
     return res.status(200).json({
         status: 'success',
         data: { bookmarks: updatedUser.bookmarks },
@@ -131,19 +143,64 @@ export const toggleBookmark = asyncErrorHandler(async (req, res, next) => {
 });
 
 // Get user bookmarks
-export const getUserBookmarks = asyncErrorHandler(async (req, res) => {
-    const user = await User.findById(req.user._id)
-        .select("bookmarks")
-        .populate("bookmarks", "title content images createdAt");
+export const getUserBookmarks = asyncErrorHandler(async (req, res, next) => {
+    const userId = req.user._id;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // Use the utility function to get blocked users and bookmarks once
+    const { mutuallyBlockedUserIds, bookmarkedPostIds } = await getCurrentUserInteractionData(userId);
+
+    // Find bookmarked posts, excluding those from blocked users
+    const user = await User.findById(userId)
+        .select('bookmarks')
+        .populate({
+            path: 'bookmarks',
+            populate: [
+                { path: 'ownerid', select: 'username fullName avatar' },
+                { path: 'originalPost', populate: { path: 'ownerid', select: 'username fullName avatar' } },
+                { path: 'parentPost', select: 'content media createdAt ownerid', populate: { path: 'ownerid', select: 'username fullName avatar' } }
+            ],
+            match: { ownerid: { $nin: mutuallyBlockedUserIds } },
+            options: { sort: { createdAt: -1 }, skip, limit }
+        });
+
+    // Filter out null posts (from blocked users)
+    let posts = (user.bookmarks || []).filter(post => post !== null);
+
+    // Filter out reposts/comments of blocked users
+    posts = posts.filter(post => {
+        if (post.isRepost && post.originalPost && post.originalPost.ownerid && mutuallyBlockedUserIds.includes(post.originalPost.ownerid._id.toString())) {
+            return false;
+        }
+        if (post.parentPost && post.parentPost.ownerid && mutuallyBlockedUserIds.includes(post.parentPost.ownerid._id.toString())) {
+            return false;
+        }
+        return true;
+    });
+
+    // Add interaction flags to the bookmarked posts
+    posts = await addInteractionFlags(posts, userId, mutuallyBlockedUserIds, bookmarkedPostIds);
+
+    // Get total count for pagination (excluding blocked users' posts)
+    const total = posts.length;
 
     return res.status(200).json({
         status: 'success',
-        data: user.bookmarks,
+        data: {
+            posts,
+            pagination: {
+                currentPage: page,
+                totalPages: Math.ceil(total / limit),
+                totalPosts: total
+            }
+        },
         message: "Bookmarks fetched successfully"
     });
 });
 
-// Block/Unblock user
+// Block/Unblock user done
 export const toggleBlockUser = asyncErrorHandler(async (req, res, next) => {
     const { userId } = req.params;
 
@@ -178,7 +235,7 @@ export const toggleBlockUser = asyncErrorHandler(async (req, res, next) => {
 
 // Get blocked users list
 export const getBlockedUsers = asyncErrorHandler(async (req, res) => {
-    console.log(req.user._id)
+  
     const user = await User.findById(req.user._id)
         .select("blockedUsers")
         .populate("blockedUsers", "username fullName avatar");
@@ -212,6 +269,7 @@ export const getBlockedUsers = asyncErrorHandler(async (req, res) => {
 // });
 
 // Search users
+
 export const searchUsers = asyncErrorHandler(async (req, res, next) => {
     const { query, page = 1, limit = 10 } = req.query;
 
@@ -318,6 +376,7 @@ export const getSuggestedUsers = asyncErrorHandler(async (req, res) => {
     });
 });
 
+//done
 export const updateMessagePreference = asyncErrorHandler(async (req, res, next) => {
   const { messagePreference } = req.body;
 

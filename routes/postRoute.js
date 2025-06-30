@@ -12,7 +12,9 @@ import {
     getOwnLikedPosts,
     repost,
     getPostsByHashtag,
-    getTrendingHashtags
+    getTrendingHashtags,
+    getUserComments,
+    unrepostPost
 } from '../controllers/postControllers.js';
 import isAuthenticated from '../middlewares/authMiddleware.js';
 import { uploadPostMedia } from '../middlewares/multerMiddleware.js';
@@ -45,6 +47,9 @@ router.route('/:postId')
 // any User Posts Route
 router.get('/user/:userId', isAuthenticated, getUserPosts);
 
+// Get comments made by a specific user
+router.get('/user/:userId/comments', isAuthenticated, getUserComments);
+
 // Comments Route
 router.get('/:postId/comments', isAuthenticated, getComments);
 
@@ -53,6 +58,6 @@ router.post('/:postId/like', isAuthenticated, likeunlikePost);
 
 //repost route
 router.post('/:postId/repost', isAuthenticated, repost);
-
+router.delete('/:postId/unrepost', isAuthenticated, unrepostPost);
 
 export default router;

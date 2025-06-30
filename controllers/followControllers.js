@@ -16,7 +16,8 @@ export const followUser = asyncErrorHandler(async (req, res, next) => {
     }
 
     // Check if trying to follow self
-    if (userToFollow._id.toString() === followerId) {
+    console.log(userToFollow._id.toString() , followerId);
+    if (userToFollow._id.toString() === followerId.toString()) {
         return next(new CustomError('You cannot follow yourself', 400));
     }
 
@@ -56,7 +57,7 @@ export const unfollowUser = asyncErrorHandler(async (req, res, next) => {
         return next(new CustomError('User to unfollow not found', 404));
     }
 
-    if (userToUnFollow._id.toString() === followerId) {
+    if (userToUnFollow._id.toString() === followerId.toString()) {
         return next(new CustomError('You cannot unfollow yourself', 400));
     }
 

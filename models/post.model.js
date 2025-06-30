@@ -158,22 +158,27 @@ postSchema.methods.updateStats = async function() {
   const Like = mongoose.model('Like');
   const Post = mongoose.model('Post');
   
-  const [likeCount, commentCount] = await Promise.all([
+  const [likeCount, commentCount, repostCount] = await Promise.all([
     Like.countDocuments({ post: this._id }),
-    Post.countDocuments({ parentPost: this._id })
+    Post.countDocuments({ parentPost: this._id }),
+    Post.countDocuments({ originalPost: this._id, isRepost: true })
   ]);
 
   // Only update and save if counts have changed
-  if (this.stats.likeCount !== likeCount || this.stats.commentCount !== commentCount) {
+  if (this.stats.likeCount !== likeCount || 
+      this.stats.commentCount !== commentCount || 
+      this.stats.repostCount !== repostCount) {
     this.stats.likeCount = likeCount;
     this.stats.commentCount = commentCount;
+    this.stats.repostCount = repostCount;
     // Use updateOne to avoid triggering middleware
     await Post.updateOne(
       { _id: this._id },
       { 
         $set: {
           'stats.likeCount': likeCount,
-          'stats.commentCount': commentCount
+          'stats.commentCount': commentCount,
+          'stats.repostCount': repostCount
         }
       }
     );

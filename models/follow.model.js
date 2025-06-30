@@ -40,5 +40,12 @@ followSchema.statics.getFollowingCount = async function(userId) {
   });
 };
 
+followSchema.statics.isBlocked = async function(blockingUserId, blockedUserId) {
+  const User = mongoose.model('User');
+  const blockingUser = await User.findById(blockingUserId).select('blockedUsers');
+  if (!blockingUser) return false; // Or throw an error, depending on desired behavior
+  return blockingUser.blockedUsers.includes(blockedUserId);
+};
+
 const FollowModel = mongoose.model("Follow", followSchema);
 export default FollowModel;

@@ -21,7 +21,7 @@ const isAuthenticated = asyncErrorHandler(async (req, res, next) => {
             if (!decoded) {
                 return next(new CustomError('Invalid access token', 401));
             }
-             const user = await User.findById(decoded.userId)
+             const user = await User.findById(decoded.userId).select('+bookmarks')
             
             if (!user) {
                 return next(new CustomError('User with given token  not found', 404));
@@ -30,7 +30,7 @@ const isAuthenticated = asyncErrorHandler(async (req, res, next) => {
                 return next(new CustomError('Password changed recently. Please login again', 401));
             }
             
-            req.user = {_id:user._id, username: user.username,premium: user.isPremium};
+            req.user = {_id:user._id, username: user.username,premium: user.isPremium, bookmarks: user.bookmarks};
          
             return next();
         }
@@ -40,7 +40,7 @@ const isAuthenticated = asyncErrorHandler(async (req, res, next) => {
         if (!decoded) {
             return next(new CustomError('Invalid refresh token', 401));
         }       
-        const user = await User.findById(decoded.userId);
+        const user = await User.findById(decoded.userId).select('+bookmarks');
         
         if (!user) {
             return next(new CustomError('User not found', 404));
@@ -59,7 +59,7 @@ const isAuthenticated = asyncErrorHandler(async (req, res, next) => {
         });
 
         // Set req.user after successful refresh token verification
-        req.user = {_id:user._id, username: user.username,premium: user.isPremium};
+        req.user = {_id:user._id, username: user.username,premium: user.isPremium, bookmarks: user.bookmarks};
 
         next();
 

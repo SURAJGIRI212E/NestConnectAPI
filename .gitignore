@@ -7,7 +7,10 @@
 # misc
 .DS_Store
 .env
-
+ca.crt
+ca.key
+cert.crt
+cert.key
 
 # log files
 npm-debug.log*
