@@ -30,8 +30,7 @@ const isAuthenticated = asyncErrorHandler(async (req, res, next) => {
                 return next(new CustomError('Password changed recently. Please login again', 401));
             }
             
-            req.user = {_id:user._id, username: user.username,premium: user.isPremium, bookmarks: user.bookmarks};
-         
+            req.user = {_id:user._id, username: user.username,avatar:user.avatar, premium: user.isPremium, bookmarks: user.bookmarks};
             return next();
         }
 
@@ -59,7 +58,7 @@ const isAuthenticated = asyncErrorHandler(async (req, res, next) => {
         });
 
         // Set req.user after successful refresh token verification
-        req.user = {_id:user._id, username: user.username,premium: user.isPremium, bookmarks: user.bookmarks};
+        req.user = {_id:user._id, username: user.username,avatar:user.avatar, premium: user.isPremium, bookmarks: user.bookmarks};
 
         next();
 

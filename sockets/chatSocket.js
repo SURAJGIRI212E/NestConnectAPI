@@ -3,6 +3,8 @@ import Conversation from '../models/conversation.model.js';
 import Message from '../models/message.model.js';
 import { canMessageUser, canVideoCall } from '../services/permissionService.js';
 
+let ioInstance;
+
 const onlineUsers = new Map(); // userId -> socketId
 const userSockets = new Map(); // userId -> Set of socket IDs
 
@@ -18,6 +20,7 @@ const updateUserOnlineStatus = async (userId, isOnline) => {
 };
 
 export const setupChatSocket = (io) => {
+  ioInstance = io; // Store the io instance
   io.on('connection', async (socket) => {
     const userId = socket.handshake.auth.userId;
     console.log("userid connecetd",userId,socket.id)
@@ -35,7 +38,6 @@ export const setupChatSocket = (io) => {
       
       // Update online status
       onlineUsers.set(userId, socket.id);
-      await updateUserOnlineStatus(userId, true);
       
       // Broadcast online users
       io.emit('getOnlineUsers', Array.from(onlineUsers.keys()));
@@ -97,11 +99,13 @@ export const setupChatSocket = (io) => {
         await newMessage.populate('senderId', 'username avatar');
 
         // Send to receiver if online
-        const receiverSocket = onlineUsers.get(receiverId);
-        if (receiverSocket) {
-          io.to(receiverSocket).emit('receiveMessage', {
-            message: newMessage,
-            conversationId
+        const receiverSockets = userSockets.get(receiverId); // Use userSockets for all receiver's sockets
+        if (receiverSockets) {
+          receiverSockets.forEach(sockId => {
+            io.to(sockId).emit('receiveMessage', {
+              message: newMessage,
+              conversationId
+            });
           });
         }
 
@@ -118,10 +122,12 @@ export const setupChatSocket = (io) => {
             await conversation.save();
 
             // Notify receiver of updated unread count
-            if (receiverSocket) {
-              io.to(receiverSocket).emit('unreadCountUpdated', {
-                conversationId,
-                unreadCount: currentCount + 1
+            if (receiverSockets) { // Use receiverSockets
+              receiverSockets.forEach(sockId => {
+                io.to(sockId).emit('unreadCountUpdated', {
+                  conversationId,
+                  unreadCount: currentCount + 1
+                });
               });
             }
           }
@@ -150,14 +156,15 @@ export const setupChatSocket = (io) => {
 
         // Delete message
         await message.deleteOne();
-console.log("message deleted", messageId);
         // Notify conversation participants about message deletion
         const conversation = await Conversation.findById(conversationId);
         if (conversation) {
           conversation.participants.forEach(participantId => {
-            const participantSocket = onlineUsers.get(participantId.toString());
-            if (participantSocket) {
-              io.to(participantSocket).emit('messageDeleted', { messageId, conversationId });
+            const participantSockets = userSockets.get(participantId.toString()); // Use userSockets
+            if (participantSockets) {
+              participantSockets.forEach(sockId => {
+                io.to(sockId).emit('messageDeleted', { messageId, conversationId });
+              });
             }
           });
         }
@@ -169,16 +176,20 @@ console.log("message deleted", messageId);
 
     // Handle typing status
     socket.on('typing', ({ senderId, receiverId, conversationId }) => {
-      const receiverSocket = onlineUsers.get(receiverId);
-      if (receiverSocket) {
-        io.to(receiverSocket).emit('typing', { senderId, conversationId });
+      const receiverSockets = userSockets.get(receiverId); // Use userSockets
+      if (receiverSockets) {
+        receiverSockets.forEach(sockId => {
+          io.to(sockId).emit('typing', { senderId, conversationId });
+        });
       }
     });
 
     socket.on('stopTyping', ({ senderId, receiverId, conversationId }) => {
-      const receiverSocket = onlineUsers.get(receiverId);
-      if (receiverSocket) {
-        io.to(receiverSocket).emit('stopTyping', { senderId, conversationId });
+      const receiverSockets = userSockets.get(receiverId); // Use userSockets
+      if (receiverSockets) {
+        receiverSockets.forEach(sockId => {
+          io.to(sockId).emit('stopTyping', { senderId, conversationId });
+        });
       }
     });
 
@@ -218,21 +229,28 @@ console.log("message deleted", messageId);
           );
           
           if (otherParticipant) {
-            const senderSocket = onlineUsers.get(otherParticipant.toString());
-            if (senderSocket) {
-              io.to(senderSocket).emit('messagesRead', { 
-                conversationId,
-                messageIds: messages.map(m => m._id)
+            const senderSockets = userSockets.get(otherParticipant.toString()); // Use userSockets
+            if (senderSockets) {
+              senderSockets.forEach(sockId => {
+                io.to(sockId).emit('messagesRead', { 
+                  conversationId,
+                  messageIds: messages.map(m => m._id)
+                });
               });
             }
           }
         }
 
         // Send updated unread count to the reader
-        socket.emit('unreadCountUpdated', {
-          conversationId,
-          unreadCount: 0
-        });
+        const readerSockets = userSockets.get(userId); // Use userSockets
+        if(readerSockets) {
+          readerSockets.forEach(sockId => {
+            io.to(sockId).emit('unreadCountUpdated', {
+              conversationId,
+              unreadCount: 0
+            });
+          });
+        }
       } catch (error) {
         console.error('Error marking messages as read:', error);
       }
@@ -245,9 +263,11 @@ console.log("message deleted", messageId);
         if (conversation) {
           // Notify all participants except the one deleting
           conversation.participants.forEach(participantId => {
-            const participantSocket = onlineUsers.get(participantId.toString());
-            if (participantSocket && participantSocket !== socket.id) {
-              io.to(participantSocket).emit('conversationDeleted', { conversationId });
+            const participantSockets = userSockets.get(participantId.toString()); // Use userSockets
+            if (participantSockets && participantId.toString() !== socket.handshake.auth.userId) { // Check if not the deleter
+              participantSockets.forEach(sockId => {
+                io.to(sockId).emit('conversationDeleted', { conversationId });
+              });
             }
           });
         }
@@ -258,7 +278,7 @@ console.log("message deleted", messageId);
 
     // Video call events
     socket.on('callUser', async ({ targetUserId, from }) => {
-      console.log(`User ${socket.handshake.auth.userId} calling user ${targetUserId}`);
+     
       const { canInteract, reason } = await canVideoCall(from._id, targetUserId);
       if (!canInteract) {
         console.log({ message: reason || 'You cannot video call this user.' })
@@ -266,10 +286,10 @@ console.log("message deleted", messageId);
         return;
       }
       const targetUserSocketIds = userSockets.get(targetUserId);
-      console.log(targetUserSocketIds)
+      // console.log(targetUserSocketIds)
       if (targetUserSocketIds) {
         targetUserSocketIds.forEach(socketId => {
-          console.log("inside foreach",socketId)
+          
           io.to(socketId).emit('incomingCall', { from, signal: socket.id }); // Sending caller's socket ID as initial signal
         });
         // Optionally, notify the caller that the request was sent
@@ -281,7 +301,7 @@ console.log("message deleted", messageId);
     });
 
     socket.on('answerCall', ({ signal, to, from }) => {
-      console.log(`User ${socket.handshake.auth.userId} answering call to user ${to}`);
+      // console.log(`User ${socket.handshake.auth.userId} answering call to user ${to}`);
       const callerSocketId = signal; // The initial signal from callUser was the caller's socket ID
       if (callerSocketId) {
         io.to(callerSocketId).emit('callAccepted', { signal, to: from }); // Send answer signal and receiver's user object back to caller
@@ -300,7 +320,7 @@ console.log("message deleted", messageId);
     });
 
     socket.on('rejectCall', ({ to }) => {
-      console.log(`User ${socket.handshake.auth.userId} rejecting call from user ${to}`);
+      // console.log(`User ${socket.handshake.auth.userId} rejecting call from user ${to}`);
       const callerSocketIds = userSockets.get(to); // 'to' here is the caller's user ID
       if (callerSocketIds) {
          callerSocketIds.forEach(socketId => {
@@ -310,7 +330,7 @@ console.log("message deleted", messageId);
     });
 
     socket.on('hangUp', ({ to }) => {
-      console.log(`User ${socket.handshake.auth.userId} hanging up call with user ${to}`);
+      // console.log(`User ${socket.handshake.auth.userId} hanging up call with user ${to}`);
        const otherUserSocketIds = userSockets.get(to); // 'to' here is the other user's ID
        if (otherUserSocketIds) {
           otherUserSocketIds.forEach(socketId => {
@@ -320,7 +340,7 @@ console.log("message deleted", messageId);
     });
 
     socket.on('sendingSignal', ({ targetUserId, signal }) => {
-      console.log(`User ${socket.handshake.auth.userId} sending signal to user ${targetUserId}`);
+      // console.log(`User ${socket.handshake.auth.userId} sending signal to user ${targetUserId}`);
       const targetUserSocketIds = userSockets.get(targetUserId);
       if (targetUserSocketIds) {
         targetUserSocketIds.forEach(socketId => {
@@ -331,3 +351,6 @@ console.log("message deleted", messageId);
     });
   });
 };
+
+export const getIO = () => ioInstance;
+export const getUserSocketIds = (userId) => userSockets.get(userId.toString()); // New export

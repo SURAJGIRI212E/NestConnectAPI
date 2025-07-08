@@ -19,11 +19,12 @@ export const getUserByUsername = asyncErrorHandler(async (req, res, next) => {
       return next(new CustomError('User not found', 404));
     }
   
-    const [followersCount, followingCount, isFollowing, isBlockedByCurrentUser] = await Promise.all([
+    const [followersCount, followingCount, isFollowing, isBlockedByCurrentUser, blockedByOtherUser] = await Promise.all([
       Follow.getFollowersCount(user._id),
       Follow.getFollowingCount(user._id),
       Follow.isFollowing(loggedInUserId, user._id),
-      Follow.isBlocked(loggedInUserId, user._id)
+      Follow.isBlocked(loggedInUserId, user._id),
+      Follow.isBlocked(user._id, loggedInUserId)
     ]);
   
     res.status(200).json({
@@ -35,6 +36,7 @@ export const getUserByUsername = asyncErrorHandler(async (req, res, next) => {
           isBlockedByCurrentUser: isBlockedByCurrentUser,
         followersCount,
         followingCount,
+          blockedByOtherUser,
         },
        
       }

@@ -1,7 +1,7 @@
 import User from '../models/user.model.js';
 
 export const getCurrentUserInteractionData = async (userId) => {
-    const user = await User.findById(userId).select('bookmarks blockedUsers');
+    const user = await User.findById(userId).select('username bookmarks blockedUsers');
     const blockedByOthers = await User.find({ blockedUsers: userId }).select('_id');
 
     const mutuallyBlockedUserIds = [

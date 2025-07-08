@@ -27,7 +27,7 @@ const httpServer = createServer({key, cert}, app);
 console.log("client url",process.env.CLIENT_URL)
 const io = new Server(httpServer, {
   cors: {
-    origin: ['http://localhost:3000', process.env.CLIENT_URL, 'exp://192.168.1.102:19000'],
+    origin: ['http://localhost:3000', process.env.CLIENT_URL, 'https://192.168.1.107:3000','exp://192.168.1.102:19000'],
     methods: ['GET', 'POST'],
     credentials: true,
      pingTimeout: 60000, // Increase ping timeout for mobile
@@ -42,7 +42,8 @@ app.use(express.json());
 app.use(express.static('public'));// Serve static files from the 'public' directory
 // app.use(express.static(__dirname)) 
 app.use(cors({
-  origin: ['http://localhost:3000', process.env.CLIENT_URL, 'exp://192.168.1.102:19000'],
+    origin: ['http://localhost:3000', process.env.CLIENT_URL, 'https://192.168.1.107:3000','exp://192.168.1.102:19000'],
+   
   credentials: true,
  
 }));

@@ -17,9 +17,6 @@ export const addInteractionFlags = async (posts, userId, mutuallyBlockedUserIds,
     const allOwnerIds = new Set();
     const postsToProcess = [];
 
-    // bookmarkedPostIds is now passed as a parameter
-    console.log("addInteractionFlags - userId:", userId);
-    console.log("addInteractionFlags - bookmarkedPostIds (Set):", bookmarkedPostIds);
 
     // First, identify all unique post IDs (including original posts of reposts)
     for (const post of posts) {
@@ -135,7 +132,7 @@ export const addInteractionFlags = async (posts, userId, mutuallyBlockedUserIds,
         postObject.isLikedByCurrentUser = likedPostIds.has(postObject._id.toString());
         postObject.isRepostedByCurrentUser = repostedOriginalPostIds.has(postObject._id.toString());
         postObject.isBookmarkedByCurrentUser = bookmarkedPostIds ? bookmarkedPostIds.has(postObject._id.toString()) : false;
-        console.log(`  Post ${postObject._id.toString()} - isRepostedByCurrentUser (final): ${postObject.isRepostedByCurrentUser}, isBookmarkedByCurrentUser: ${postObject.isBookmarkedByCurrentUser}`);
+      
 
         finalPosts.push(postObject);
     }
@@ -231,7 +228,8 @@ export const createPost = asyncErrorHandler(async (req, res, next) => {
                 recipient: actualParentPost.ownerid,
                 type: 'comment',
                 post: actualParentPost._id,
-                message: `${req.user.username} commented on your post`
+                message: `${req.user.username} commented on your post`,
+                sender: {avatar:req.user.avatar,username:req.user.username}
             });
         }
     }
@@ -740,7 +738,7 @@ export const likeunlikePost = asyncErrorHandler(async (req, res, next) => {
     }
 
     // Use the utility function to get blocked users and bookmarks once
-    const { mutuallyBlockedUserIds, bookmarkedPostIds } = await getCurrentUserInteractionData(userId);
+    const { user: currentUserDoc,mutuallyBlockedUserIds, bookmarkedPostIds } = await getCurrentUserInteractionData(userId);
     
     // Check if current user is blocked by post owner or vice versa (using pre-fetched IDs)
     if (mutuallyBlockedUserIds.includes(actualPostToModify.ownerid._id.toString())) {
@@ -766,7 +764,9 @@ export const likeunlikePost = asyncErrorHandler(async (req, res, next) => {
                 recipient: actualPostToModify.ownerid._id,
                 type: 'like',
                 post: actualPostToModify._id,
-                message: `${(await User.findById(userId)).username} liked your post`
+                message: `${(currentUserDoc.username)} liked your post`,
+                sender: {avatar:req.user.avatar,
+                    username:req.user.username}
             });
         }
     }
@@ -862,7 +862,8 @@ export const repost = asyncErrorHandler(async (req, res, next) => {
     }
 
     // Use the utility function to get blocked users and bookmarks once
-    const { mutuallyBlockedUserIds, bookmarkedPostIds, user: currentUserDoc } = await getCurrentUserInteractionData(userId);
+    const { user: currentUserDoc ,mutuallyBlockedUserIds, bookmarkedPostIds} = await getCurrentUserInteractionData(userId);
+  
 
     // Check if reposting user is blocked by original post owner or vice versa (using pre-fetched IDs)
     if (mutuallyBlockedUserIds.includes(originalPost.ownerid._id.toString())) {
@@ -907,14 +908,15 @@ export const repost = asyncErrorHandler(async (req, res, next) => {
             recipient: originalPost.ownerid._id,
             type: 'repost',
             post: postId,
-            message: `${currentUserDoc.username} reposted your post`
+            message: `${currentUserDoc.username} reposted your post`,
+            sender: {avatar:req.user.avatar,username:req.user.username}
         });
     }
 
     // Apply interaction flags to the newly created repost, passing pre-fetched IDs
     const [repostWithFlags] = await addInteractionFlags([repost], userId, mutuallyBlockedUserIds, bookmarkedPostIds);
 
-    console.log("Backend Repost Response Data:", repostWithFlags);
+    // console.log("Backend Repost Response Data:", repostWithFlags);
 
     res.status(201).json({
         status: 'success',
@@ -1015,7 +1017,7 @@ export const getUserComments = asyncErrorHandler(async (req, res, next) => {
     // or if the target user has blocked the current user.
     const isTargetUserBlocked = mutuallyBlockedUserIds.includes(userId);
     if (isTargetUserBlocked) {
-        return next(new CustomError('Cannot view comments from this user due to blocking status', 403));
+        return next(new CustomError('Cannot view comments due to blocking status', 403));
     }
 
     let comments = await Post.find({

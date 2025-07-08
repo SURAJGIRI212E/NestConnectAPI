@@ -103,14 +103,13 @@ postSchema.pre('save', async function(next) {
         // Extract and process mentions
         const mentionUsernames = [...new Set((this.content.match(/@[a-zA-Z0-9_]+/g) || [])
             .map(mention => mention.slice(1)))];
-        console.log(mentionUsernames);
+        
         if (mentionUsernames.length > 0) {
             try {
                 const User = mongoose.model('User');
                 const mentionedUsers = await User.find({ 
                     username: { $in: mentionUsernames } 
-                });
-                
+                }).select('username avatar fullName');
                 // Set mentions array
                 this.mentions = mentionedUsers.map(user => user._id);
 
@@ -120,11 +119,15 @@ postSchema.pre('save', async function(next) {
                         // Don't notify if it's a self-mention or if the user has blocked the poster
                         if (user._id.toString() !== this.ownerid.toString() && 
                             !user.blockedUsers?.includes(this.ownerid)) {
+                             const currentuser=await User.findById(this.ownerid)
                             await createNotification({
                                 recipient: user._id,
                                 type: 'mention',
                                 post: this._id,
-                                message: `${this._creatorUsername} mentioned you in a post`
+                                message: `${(currentuser.username)} mentioned you in a post`,
+                                sender: {avatar:currentuser.avatar,
+                                  username:currentuser.username
+                                }
                             });
                         }
                     }

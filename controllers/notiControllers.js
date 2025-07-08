@@ -1,6 +1,7 @@
 import Notification from '../models/noti.model.js';
 import CustomError from '../utilities/CustomError.js';
 import asyncErrorHandler from '../utilities/asyncErrorHandler.js';
+import { getIO, getUserSocketIds } from '../sockets/chatSocket.js';
 
 // Get user's notifications with pagination
 export const getNotifications = asyncErrorHandler(async (req, res) => {
@@ -15,7 +16,7 @@ export const getNotifications = asyncErrorHandler(async (req, res) => {
         .limit(limit)
         .populate('recipient', 'username avatar')
         .populate('post', 'content');
-console.log(notifications)
+// console.log(notifications)
     const total = await Notification.countDocuments({ recipient: userId });
 
     res.status(200).json({
@@ -119,7 +120,8 @@ export const createNotification = async ({
     recipient,
     type,
     post = null,
-    message
+    message,
+    sender = null
 }) => {
     try {
         const notification = await Notification.create({
@@ -127,11 +129,24 @@ export const createNotification = async ({
             type,
             post,
             message,
-            read: false
+            sender,
+            read: false,
         });
 
-        // Here you can add real-time notification using socket.io
-        // TODO: Emit socket event for real-time notification
+        // Populate sender before emitting
+        // await notification.populate( 'username avatar');
+
+        // Emit real-time notification using socket.io
+        const io = getIO && getIO();
+        if (io) {
+            const recipientSocketIds = getUserSocketIds(recipient);
+            if (recipientSocketIds) {
+                recipientSocketIds.forEach(socketId => {
+                    io.to(socketId).emit('newNotification', notification);
+                   
+                });
+            }
+        }
 
         return notification;
     } catch (error) {

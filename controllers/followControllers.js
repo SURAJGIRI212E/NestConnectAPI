@@ -16,7 +16,6 @@ export const followUser = asyncErrorHandler(async (req, res, next) => {
     }
 
     // Check if trying to follow self
-    console.log(userToFollow._id.toString() , followerId);
     if (userToFollow._id.toString() === followerId.toString()) {
         return next(new CustomError('You cannot follow yourself', 400));
     }
@@ -38,7 +37,10 @@ export const followUser = asyncErrorHandler(async (req, res, next) => {
     await createNotification({
         recipient: userToFollow._id,
         type: 'follow',
-        message: `${follower.username} started following you`
+        message: `${follower.username} started following you`,
+        sender: {avatar:follower.avatar,
+            username:follower.username
+        }
     });
 
     res.status(200).json({

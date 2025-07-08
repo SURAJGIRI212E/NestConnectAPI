@@ -6,7 +6,11 @@ const notificationSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  
+  sender:{
+    type:{
+      avatar:String,
+      username:String    },
+  },
   type: {
     type: String,
     enum:{
