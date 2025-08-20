@@ -5,7 +5,7 @@ import fs from 'fs';
 import { createServer } from 'http'; // use https if you have certs
 import { Server } from 'socket.io';
 import cookieParser from 'cookie-parser';
-
+import cors from 'cors';
 import connectDB from './config/db.js';
 import CustomError from './utilities/CustomError.js';
 import errorHandler from './middlewares/errorMiddleware.js';
