@@ -1,21 +1,19 @@
 import Notification from '../models/noti.model.js';
 import CustomError from '../utilities/CustomError.js';
 import asyncErrorHandler from '../utilities/asyncErrorHandler.js';
-import { getIO, getUserSocketIds } from '../sockets/chatSocket.js';
-import User from '../models/user.model.js';
 
 // Get user's notifications with pagination
 export const getNotifications = asyncErrorHandler(async (req, res) => {
     const userId = req.user._id;
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
     const notifications = await Notification.find({ recipient: userId })
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('recipient', 'username avatar')
+        .populate('recipient', 'username avatar premium')
         .populate('post', 'content');
     const total = await Notification.countDocuments({ recipient: userId });
 
@@ -116,40 +114,27 @@ export const deleteAllNotifications = asyncErrorHandler(async (req, res) => {
 });
 
 // Helper function to create a new notification (for internal use)
-export const createNotification = asyncErrorHandler(async ({
+export const createNotification = async ({
     recipient,
     type,
     post = null,
-    message,
-    sender = null
+    message
 }) => {
-    // Fetch recipient's notification preferences
-    const user = await User.findById(recipient).select('notificationPreferences');
-    if (!user) return null;
-    const prefs = user.notificationPreferences || {};
-    // Master switch
-    if (prefs.all && prefs.all.from === 'no one') return null;
-    // Per-type switch
-    if (prefs.types && prefs.types[type] && prefs.types[type].from === 'no one') return null;
-    const notification = await Notification.create({
-        recipient,
-        type,
-        post,
-        message,
-        sender,
-        read: false,
-    });
+    try {
+        const notification = await Notification.create({
+            recipient,
+            type,
+            post,
+            message,
+            read: false
+        });
 
-    // Emit real-time notification using socket.io
-    const io = getIO && getIO();
-    if (io) {
-        const recipientSocketIds = getUserSocketIds(recipient);
-        if (recipientSocketIds) {
-            recipientSocketIds.forEach(socketId => {
-                io.to(socketId).emit('newNotification', notification);
-            });
-        }
+        // Here you can add real-time notification using socket.io
+        // TODO: Emit socket event for real-time notification
+
+        return notification;
+    } catch (error) {
+        console.error('Error creating notification:', error);
+        return null;
     }
-
-    return notification;
-});
+};

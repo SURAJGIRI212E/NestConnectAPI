@@ -67,20 +67,22 @@ const login = asyncErrorHandler(async (req, res, next) => {
     const accessToken = generateAccessToken(user._id);
     const refreshToken = generateRefreshToken(user._id);
 
-
     // Set cookies
     res.cookie('access_token', accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 15 * 60 * 1000, // 15 minutes
+         httpOnly: true,
+  secure: true,
+  sameSite: 'none',
+  path: '/',
+        expires: new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
     });
 
+    // Set refresh token in cookie
     res.cookie('refresh_token', refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        secure: true,
+ sameSite: 'none',
+ path: '/',
+        expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
     });
 
     // Send response
@@ -108,9 +110,15 @@ export const getMe = asyncErrorHandler(async (req, res) => {
   }); 
 
 const logout = asyncErrorHandler(async (req, res, next) => {
-    // Clear cookies
-    res.clearCookie('access_token');
-    res.clearCookie('refresh_token');           
+    // Clear cookies with options to match how they were set
+    const cookieOptions = {
+        httpOnly: true,
+        secure: true,
+sameSite: 'none',
+        path: '/',
+    };
+    res.clearCookie('access_token', cookieOptions);
+    res.clearCookie('refresh_token', cookieOptions);
 
     return res.status(200).json({
         status: 'success',
@@ -132,15 +140,33 @@ const forgetPassword = asyncErrorHandler(async (req, res, next) => {
 
     // Generate password reset token and send email
     const resetToken = user.createResetPasswordToken(); // method generates a token and sets it in the user document
-    console.log(resetToken)
+   
     await user.save();
 
    try {
-     await sendEmail({
-         email: user.email,
-         subject: 'Password Reset',
-         message: `We have recievd a passowrd reset request from your side.Click the link to reset your password: ${req.protocol}://${req.get('host')}/api/auth/resetPassword/${resetToken}`,
-     });
+     const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+     const resetLink = `${frontendUrl}/reset-password/${resetToken}`;
+    await sendEmail({
+    email: user.email,
+    subject: 'Password Reset',
+    message: `
+        <p>We have received a password reset request from your side.</p>
+        <p>Click the button below to reset your password or link</p>
+        <a href="${resetLink}" style="
+            display: inline-block;
+            padding: 10px 20px;
+            margin-top: 10px;
+            font-size: 16px;
+            color: #ffffff;
+            background-color: #007BFF;
+            text-decoration: none;
+            border-radius: 5px;
+        ">Reset Password</a>
+        ${resetLink}
+        <p>If you did not request this, please ignore this email.</p>
+    `,
+});
+
    } catch (error) {
         user.resetPasswordToken = undefined;
         user.resetPasswordExpire = undefined;
@@ -165,7 +191,6 @@ const resetPassword = asyncErrorHandler(async (req, res, next) => {
         return next(new CustomError('Password and confirm password are required', 400));   
     }
     if (password != confirmpassword) {
-        console.log(password,confirmpassword)
         return next(new CustomError('Password and confirm password do not match', 400));   
     }
 

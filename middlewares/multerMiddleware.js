@@ -4,8 +4,8 @@ import fs from 'fs';
 
 // Limits
 const LIMITS = {
-  basic: { image: 1 * 1024 * 1024, video: 50 * 1024 * 1024 },//2mb and 50mb
-  premium: { image: 5 * 1024 * 1024, video: 200 * 1024 * 1024 }
+  basic: { image: 2 * 1024 * 1024, video: 50 * 1024 * 1024 },//2mb and 50mb
+  premium: { image: 5 * 1024 * 1024, video: 200 * 1024 * 1024 }//5mb and 200mb
 };
 
 // Allowed types
@@ -46,16 +46,16 @@ export const uploadUserProfile = multer({
 
 // Post media upload (image/video)
 export const uploadPostMedia = (req, res, next) => {
-  const premium = req.user?.premium;
+  const premiumActive = req.user?.premium?.isActive;
     const upload = multer({
     storage,
     limits: {
-      files: premium ? 8 : 4 // Max number of files
+      files: premiumActive ? 8 : 4 // Max number of files
     },
     fileFilter: (req, file, cb) => {
       const type = file.mimetype.split('/')[0];
       const ext = file.originalname.toLowerCase().split('.').pop();
-      
+
       // Check file type
       if (!['image', 'video'].includes(type)) {
         return cb(new CustomError('Only image and video files are allowed', 400));
@@ -67,22 +67,22 @@ export const uploadPostMedia = (req, res, next) => {
       }
 
       // Set file size limit based on type
-      const maxSize = type === 'image' 
-        ? (premium ? LIMITS.premium.image : LIMITS.basic.image)
-        : (premium ? LIMITS.premium.video : LIMITS.basic.video);
+      const maxSize = type === 'image'
+        ? (premiumActive ? LIMITS.premium.image : LIMITS.basic.image)
+        : (premiumActive ? LIMITS.premium.video : LIMITS.basic.video);
 
       // Store the size limit for this file to use in size check
       file.sizeLimit = maxSize;
 
       cb(null, true);
     }
-  }).array('media', premium ? 8 : 4);
+  }).array('media', premiumActive ? 8 : 4);
   // Handle upload
   upload(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       if (err.code === 'LIMIT_FILE_COUNT') {
         return next(new CustomError(
-          `Too many files. ${premium ? 'Premium' : 'Basic'} users can upload up to ${premium ? 8 : 4} files`, 400
+          `Too many files. ${premiumActive ? 'Premium' : 'Basic'} users can upload up to ${premiumActive ? 8 : 4} files`, 400
         ));
       }
       return next(new CustomError(err.message, 400));
@@ -96,8 +96,8 @@ export const uploadPostMedia = (req, res, next) => {
       for (const file of req.files) {
         const type = file.mimetype.split('/')[0];
         const maxSize = type === 'image' 
-          ? (premium ? LIMITS.premium.image : LIMITS.basic.image)
-          : (premium ? LIMITS.premium.video : LIMITS.basic.video);
+          ? (premiumActive ? LIMITS.premium.image : LIMITS.basic.image)
+          : (premiumActive ? LIMITS.premium.video : LIMITS.basic.video);
 
         if (file.size > maxSize) {
           // Delete all uploaded files if any file is too large

@@ -84,6 +84,14 @@ export const addInteractionFlags = async (posts, userId, mutuallyBlockedUserIds,
             }
         }
 
+        // Fetch premium if not present
+        if (!populatedOwner.premium) {
+            const userDoc = await User.findById(ownerIdString).select('premium');
+            if (userDoc) {
+                populatedOwner.premium = userDoc.premium;
+            }
+        }
+
         return {
             ...populatedOwner,
             isFollowingByCurrentUser: followingUserIds.has(ownerIdString),
@@ -143,20 +151,19 @@ export const addInteractionFlags = async (posts, userId, mutuallyBlockedUserIds,
 export const createPost = asyncErrorHandler(async (req, res, next) => {
     const { content, visibility, parentPost } = req.body;
     const mediaFiles = req.files;
-    const isPremium = req.user.premium;
+    const isPremium = req.user.premium.isActive;
     const CONTENT_LIMITS = {
-        BASIC: 200,
-        PREMIUM: 500
+        BASIC: 400,
+        PREMIUM: 1000
     };
 
     // Validate content length based on user type
     if (content && content.length > (isPremium ? CONTENT_LIMITS.PREMIUM : CONTENT_LIMITS.BASIC)) {
         return next(new CustomError(
-            `Content length exceeds limit. ${isPremium ? 'Premium' : 'Basic'} users can post up to ${isPremium ? CONTENT_LIMITS.PREMIUM : CONTENT_LIMITS.BASIC} characters.`,
+            ` ${isPremium ? 'Premium' : 'Basic'} users can post up to ${isPremium ? CONTENT_LIMITS.PREMIUM : CONTENT_LIMITS.BASIC}  ${isPremium ? 'Max characters limit reached' : 'characters upgrade to Premium'}.`,
             400
         ));
     }
-
     // Check if post has either content or media
     if (!content && (!mediaFiles || mediaFiles.length === 0)) {
         return next(new CustomError('Post must have either content or media', 400));
@@ -183,7 +190,14 @@ export const createPost = asyncErrorHandler(async (req, res, next) => {
         content,
         media: mediaUrls,
         visibility: visibility || 'public',
-        _creatorUsername: req.user.username // Add username for mention notifications
+        _creatorUsername: req.user.username, // Add username for mention notifications
+        // Set edit window and chances based on premium status
+        edits: {
+            isedited: false,
+            editedAt: null,
+            editvalidtill: new Date(Date.now() + (isPremium ? 30 : 15) * 60 * 1000),
+            editchancesleft: isPremium ? 5 : 3
+        }
     };
 
     // Handle commenting functionality
@@ -760,6 +774,7 @@ export const likeunlikePost = asyncErrorHandler(async (req, res, next) => {
 
         // Create notification for post owner (if it's not their own post)
         if (actualPostToModify.ownerid._id.toString() !== userId.toString()) {
+           
             await createNotification({
                 recipient: actualPostToModify.ownerid._id,
                 type: 'like',
@@ -909,14 +924,13 @@ export const repost = asyncErrorHandler(async (req, res, next) => {
             type: 'repost',
             post: postId,
             message: `${currentUserDoc.username} reposted your post`,
-            sender: {avatar:req.user.avatar,username:req.user.username}
+            sender: {avatar:req.user.avatar,username:req.user.username
+            }
         });
     }
 
     // Apply interaction flags to the newly created repost, passing pre-fetched IDs
     const [repostWithFlags] = await addInteractionFlags([repost], userId, mutuallyBlockedUserIds, bookmarkedPostIds);
-
-    // console.log("Backend Repost Response Data:", repostWithFlags);
 
     res.status(201).json({
         status: 'success',
@@ -944,12 +958,15 @@ export const getPostsByHashtag = asyncErrorHandler(async (req, res, next) => {
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit)
-    .populate('ownerid', 'username profilePicture')
-    .populate('originalPost')
+    .populate('ownerid', 'username fullName avatar')
+    .populate({
+        path: 'originalPost',
+        populate: { path: 'ownerid', select: 'username fullName avatar premium' }
+    })
     .populate({
         path: 'parentPost',
         select: 'content media createdAt ownerid',
-        populate: { path: 'ownerid', select: 'username fullName avatar' }
+        populate: { path: 'ownerid', select: 'username fullName avatar premium' }
     });
 
     // NEW FILTERING STEP FOR REPOSTS/COMMENTS OF BLOCKED USERS

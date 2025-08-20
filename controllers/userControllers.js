@@ -6,6 +6,7 @@ import { uploadOnCloudinary, deleteFromCloudinary } from '../utilities/cloudinar
 import mongoose from 'mongoose';
 import { addInteractionFlags } from '../controllers/postControllers.js';
 import { getCurrentUserInteractionData } from '../utilities/userInteractionUtils.js';
+import SubscriptionModel from '../models/subscription.model.js';
 
 // Get user profile by username done
 export const getUserByUsername = asyncErrorHandler(async (req, res, next) => {
@@ -13,12 +14,25 @@ export const getUserByUsername = asyncErrorHandler(async (req, res, next) => {
     const loggedInUserId = req.user._id;
   
     const user = await User.findOne({ username })
-      .select('fullName username email bio avatar coverImage messagePreference isOnline lastActive createdAt updatedAt');
+      .select('fullName username email bio avatar coverImage messagePreference isOnline lastActive createdAt updatedAt premium');
   
     if (!user) {
       return next(new CustomError('User not found', 404));
     }
-  
+
+    // Get latest subscription for user
+    const subscription = await SubscriptionModel.findOne({ user: user._id }).sort({ createdAt: -1 });
+    let premium = user.premium || {};
+    if (subscription) {
+      premium = {
+        isActive: subscription.isActive(),
+        subscribedAt: subscription.startDate,
+        expiresAt: subscription.endDate,
+        planId: subscription.plan,
+        subscriptionId: subscription.paymentId
+      };
+    }
+
     const [followersCount, followingCount, isFollowing, isBlockedByCurrentUser, blockedByOtherUser] = await Promise.all([
       Follow.getFollowersCount(user._id),
       Follow.getFollowingCount(user._id),
@@ -26,19 +40,18 @@ export const getUserByUsername = asyncErrorHandler(async (req, res, next) => {
       Follow.isBlocked(loggedInUserId, user._id),
       Follow.isBlocked(user._id, loggedInUserId)
     ]);
-  
     res.status(200).json({
       status: 'success',
       data: {
         user: {
-          ...user.toObject(), // Convert Mongoose document to plain object
+          ...user.toObject(),
           isFollowingByCurrentUser: isFollowing,
           isBlockedByCurrentUser: isBlockedByCurrentUser,
-        followersCount,
-        followingCount,
+          followersCount,
+          followingCount,
           blockedByOtherUser,
+          premium
         },
-       
       }
     });
   });
@@ -53,6 +66,9 @@ export const updateUserProfile = asyncErrorHandler(async (req, res, next) => {
         return next(new CustomError('Please provide at least one field to update', 400));
     }
        // Get current user to check existing images
+    if (fullName.length>16){
+        return next(new CustomError('Fullname must be less than 17 characters', 400));
+    }
     const currentUser = await User.findById(req.user._id);
     if (!currentUser) {
         return next(new CustomError('User not found', 404));
@@ -249,31 +265,10 @@ export const getBlockedUsers = asyncErrorHandler(async (req, res) => {
     });
 });
 
-// Toggle premium subscription
-// export const togglePremiumSubscription = asyncErrorHandler(async (req, res) => {
-//     const user = await User.findById(req.user._id);
-    
-//     // TODO: Implement payment processing logic here
-
-//     const updatedUser = await User.findByIdAndUpdate(
-//         req.user._id,
-//         {
-//             $set: { isPremium: !user.isPremium }
-//         },
-//         { new: true }
-//     ).select("isPremium");
-
-//     return res.status(200).json({
-//         status: 'success',
-//         data: { isPremium: updatedUser.isPremium },
-//         message: `Premium subscription ${updatedUser.isPremium ? 'activated' : 'deactivated'} successfully`
-//     });
-// });
-
-// Search users
 
 export const searchUsers = asyncErrorHandler(async (req, res, next) => {
     const { query, page = 1, limit = 10 } = req.query;
+    const currentUserId = req.user._id;
 
     if (!query) {
         return next(new CustomError('Search query is required', 400));
@@ -284,21 +279,45 @@ export const searchUsers = asyncErrorHandler(async (req, res, next) => {
             { username: { $regex: query, $options: 'i' } },
             { fullName: { $regex: query, $options: 'i' } }
         ],
-        _id: { $ne: req.user._id },
-        blockedUsers: { $ne: req.user._id }
+        _id: { $ne: currentUserId },
+        blockedUsers: { $ne: currentUserId }
     };
 
     const users = await User.find(searchQuery)
-        .select("username fullName avatar bio")
+        .select("username fullName avatar bio premium")
         .limit(limit * 1)
         .skip((page - 1) * limit);
+
+    // Get follow status and premium info for each user
+    const usersWithFollowStatus = await Promise.all(
+        users.map(async (user) => {
+            const isFollowing = await Follow.isFollowing(currentUserId, user._id);
+            let premium = user.premium || {};
+            // Optionally, fetch latest subscription for each user (if needed for accuracy)
+            // const subscription = await SubscriptionModel.findOne({ user: user._id }).sort({ createdAt: -1 });
+            // if (subscription) {
+            //   premium = {
+            //     isActive: subscription.isActive(),
+            //     subscribedAt: subscription.startDate,
+            //     expiresAt: subscription.endDate,
+            //     planId: subscription.plan,
+            //     subscriptionId: subscription.paymentId
+            //   };
+            // }
+            return {
+                ...user.toObject(),
+                isFollowingByCurrentUser: isFollowing,
+                premium
+            };
+        })
+    );
 
     const total = await User.countDocuments(searchQuery);
 
     return res.status(200).json({
         status: 'success',
         data: {
-            users,
+            users: usersWithFollowStatus,
             totalPages: Math.ceil(total / limit),
             currentPage: parseInt(page),
             totalUsers: total
@@ -360,7 +379,7 @@ export const getSuggestedUsers = asyncErrorHandler(async (req, res) => {
                 fullName: true,
                 avatar: true,
                 bio: true,
-                followersCount: true
+                followersCount: true,
             }
         },
         {
@@ -371,12 +390,33 @@ export const getSuggestedUsers = asyncErrorHandler(async (req, res) => {
         }
     ]);
 
+    // Enrich each suggested user with more profile-related fields and relationship flags
+    const enrichedSuggestedUsers = await Promise.all(suggestedUsers.map(async (u) => {
+        // Get additional profile fields from the User collection
+        const fullProfile = await User.findById(u._id).select('username fullName avatar bio coverImage messagePreference createdAt premium');
+        const followingCount = await Follow.getFollowingCount(u._id);
+        const isFollowingByCurrentUser = await Follow.isFollowing(userId, u._id);
+
+        return {
+            _id: u._id,
+            username: u.username,
+            fullName: u.fullName,
+            avatar: u.avatar,
+            bio: u.bio,
+            followersCount: u.followersCount || 0,
+            followingCount,
+            isFollowingByCurrentUser,
+            // Provide a nested profile object with more fields for frontend use
+            profile: fullProfile ? fullProfile.toObject() : null
+        };
+    }));
+
     return res.status(200).json({
         status: 'success',
-        data: suggestedUsers,
+        data: enrichedSuggestedUsers,
         message: "Suggested users fetched successfully"
     });
-});
+ });
 
 //done
 export const updateMessagePreference = asyncErrorHandler(async (req, res, next) => {
@@ -402,4 +442,32 @@ export const updateMessagePreference = asyncErrorHandler(async (req, res, next) 
     data: updatedUser.messagePreference,
     message: 'Message preference updated successfully'
   });
+});
+
+// Get current user's notification preferences
+export const getNotificationPreferences = asyncErrorHandler(async (req, res, next) => {
+  const user = await User.findById(req.user._id).select('notificationPreferences');
+  if (!user) return next(new CustomError('User not found', 404));
+  res.json({ notificationPreferences: user.notificationPreferences });
+});
+
+// Update current user's notification preferences (partial or full)
+export const updateNotificationPreferences = asyncErrorHandler(async (req, res, next) => {
+  const { notificationPreferences } = req.body;
+  if (!notificationPreferences) {
+    return next(new CustomError('No preferences provided,please provide to update preference', 400));
+  }
+  // Only update provided fields (deep merge)
+  const user = await User.findById(req.user._id);
+  if (!user) return next(new CustomError('User not found', 404));
+  user.notificationPreferences = {
+    ...user.notificationPreferences,
+    ...notificationPreferences,
+    types: {
+      ...user.notificationPreferences.types,
+      ...(notificationPreferences.types || {})
+    }
+  };
+  await user.save();
+  res.json({ notificationPreferences: user.notificationPreferences });
 });

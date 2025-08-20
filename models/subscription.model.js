@@ -3,10 +3,10 @@ import mongoose from "mongoose";
 
 const subscriptionSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: [true,'current userid is required'] ,index: true},
-  status: { type: String, enum: ["ACTIVE", "EXPIRED"], default: "ACTIVE" },
+  status: { type: String, enum: ["ACTIVE", "EXPIRED"], default: null },
   startDate: { type: Date, default: Date.now },
   endDate: { type: Date },
-  plan: { type: String, enum: ["MONTHLY", "YEARLY"], default: "MONTHLY" },
+  plan: { type: String, enum: ["MONTHLY", "ANNUAL"],},
   paymentProvider: { type: String },  // e.g. Stripe, Razorpay
   paymentId: { type: String },        // transaction ID
   createdAt: { type: Date, default: Date.now }
@@ -26,7 +26,7 @@ subscriptionSchema.pre('save', function(next) {
     const date = new Date();
     
     // Calculate end date based on plan
-    if (this.plan === 'YEARLY') {
+    if (this.plan === 'ANNUAL') {
       date.setFullYear(date.getFullYear() + 1);
     } else {
       // Default to MONTHLY

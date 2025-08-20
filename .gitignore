@@ -6,6 +6,7 @@
 /public
 # misc
 .DS_Store
+server copy.js
 .env
 ca.crt
 ca.key

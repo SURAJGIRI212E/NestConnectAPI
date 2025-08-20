@@ -10,7 +10,7 @@ export const followUser = asyncErrorHandler(async (req, res, next) => {
     const followerId = req.user._id; // current login user
 
     // Find the user to follow by ID
-    const userToFollow = await User.findById(userId);
+    const userToFollow = await User.findById(userId).select('username avatar premium');
     if (!userToFollow) {
         return next(new CustomError('User to follow not found', 404));
     }
@@ -33,7 +33,7 @@ export const followUser = asyncErrorHandler(async (req, res, next) => {
     });
 
     // Create notification for the user being followed
-    const follower = await User.findById(followerId);
+    const follower = await User.findById(followerId).select('username avatar premium');
     await createNotification({
         recipient: userToFollow._id,
         type: 'follow',
@@ -54,7 +54,7 @@ export const unfollowUser = asyncErrorHandler(async (req, res, next) => {
     const { userId } = req.params;
     const followerId = req.user._id;
 
-    const userToUnFollow = await User.findById(userId);
+    const userToUnFollow = await User.findById(userId).select('username avatar premium');
     if (!userToUnFollow) {
         return next(new CustomError('User to unfollow not found', 404));
     }

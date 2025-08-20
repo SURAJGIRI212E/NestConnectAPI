@@ -1,17 +1,9 @@
 import nodemailer from 'nodemailer';
 
 const sendEmail=async (options)=>{
-    // const transporter = nodemailer.createTransport({
-    //     host: process.env.EMAIL_HOST,
-    //     port: process.env.EMAIL_PORT,
-    //     auth: {
-    //         user: process.env.EMAIL_USER,
-    //         pass: process.env.EMAIL_PASS,
-    //     },
-    // });
 
     var transporter = nodemailer.createTransport({
-        host: "live.smtp.mailtrap.io",
+        host: process.env.USER_HOST,
         port: process.env.USER_PORT,
         auth: {
           user: process.env.USER_NAME,
@@ -20,7 +12,7 @@ const sendEmail=async (options)=>{
       });
 
     const emailOptions = {
-        from: 'Social support <suraj@demomailtrap.co>',
+        from: 'NestConnect support <nestconnectsupport.co>',
         to: options.email,
         subject: options.subject,
         text: options.message,

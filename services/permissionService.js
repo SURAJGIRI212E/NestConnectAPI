@@ -1,13 +1,7 @@
 import User from '../models/user.model.js';
 import Follow from '../models/follow.model.js';
 
-/**
- * Check if users can interact based on message preferences and blocking status
- * @param {string} senderId - ID of the user initiating the interaction
- * @param {string} receiverId - ID of the target user
- * @param {boolean} requireMutualFollow - Whether the interaction requires mutual following
- * @returns {Promise<{canInteract: boolean, reason: string}>}
- */
+
 export const checkUserInteractionPermission = async (senderId, receiverId, requireMutualFollow = false) => {
   const [sender, receiver] = await Promise.all([
     User.findById(senderId).select('blockedUsers'),

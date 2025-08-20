@@ -276,32 +276,28 @@ export const setupChatSocket = (io) => {
       }
     });
 
-    // Video call events
-    socket.on('callUser', async ({ targetUserId, from }) => {
-     
+
+    ////////////////////////Video call events/////////
+ 
+    socket.on('callUser', async ({ targetUserId, from }) => { 
       const { canInteract, reason } = await canVideoCall(from._id, targetUserId);
       if (!canInteract) {
-        console.log({ message: reason || 'You cannot video call this user.' })
         socket.emit('error', { message: reason || 'You cannot video call this user.' });
         return;
       }
       const targetUserSocketIds = userSockets.get(targetUserId);
-      // console.log(targetUserSocketIds)
       if (targetUserSocketIds) {
-        targetUserSocketIds.forEach(socketId => {
-          
+        targetUserSocketIds.forEach(socketId => {       
           io.to(socketId).emit('incomingCall', { from, signal: socket.id }); // Sending caller's socket ID as initial signal
         });
         // Optionally, notify the caller that the request was sent
         socket.emit('callRequestSent', { to: targetUserId });
       } else {
-        console.log(`Target user ${targetUserId} not online.`);
         socket.emit('userNotOnline', { targetUserId });
       }
     });
 
     socket.on('answerCall', ({ signal, to, from }) => {
-      // console.log(`User ${socket.handshake.auth.userId} answering call to user ${to}`);
       const callerSocketId = signal; // The initial signal from callUser was the caller's socket ID
       if (callerSocketId) {
         io.to(callerSocketId).emit('callAccepted', { signal, to: from }); // Send answer signal and receiver's user object back to caller
@@ -314,13 +310,10 @@ export const setupChatSocket = (io) => {
                 }
             });
          }
-      } else {
-         console.log(`Caller socket ID not found for answering call to user ${to}`);
-      }
+      } 
     });
 
     socket.on('rejectCall', ({ to }) => {
-      // console.log(`User ${socket.handshake.auth.userId} rejecting call from user ${to}`);
       const callerSocketIds = userSockets.get(to); // 'to' here is the caller's user ID
       if (callerSocketIds) {
          callerSocketIds.forEach(socketId => {
@@ -330,7 +323,6 @@ export const setupChatSocket = (io) => {
     });
 
     socket.on('hangUp', ({ to }) => {
-      // console.log(`User ${socket.handshake.auth.userId} hanging up call with user ${to}`);
        const otherUserSocketIds = userSockets.get(to); // 'to' here is the other user's ID
        if (otherUserSocketIds) {
           otherUserSocketIds.forEach(socketId => {
@@ -339,16 +331,6 @@ export const setupChatSocket = (io) => {
        }
     });
 
-    socket.on('sendingSignal', ({ targetUserId, signal }) => {
-      // console.log(`User ${socket.handshake.auth.userId} sending signal to user ${targetUserId}`);
-      const targetUserSocketIds = userSockets.get(targetUserId);
-      if (targetUserSocketIds) {
-        targetUserSocketIds.forEach(socketId => {
-          // Send signal to all sockets of the target user
-          io.to(socketId).emit('returningSignal', { signal });
-        });
-      }
-    });
   });
 };
 

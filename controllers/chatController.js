@@ -24,7 +24,8 @@ export const getOrCreateConversation = asyncErrorHandler(async (req, res) => {
     });
   }
 
-  await conversation.populate('participants', 'username avatar isOnline lastActive');
+  // Populate premium field for participants
+  await conversation.populate('participants', 'username avatar isOnline lastActive premium');
   
   res.status(200).json({
     status: 'success',
@@ -38,7 +39,7 @@ export const getConversations = asyncErrorHandler(async (req, res) => {
   const conversations = await Conversation.find({
     participants: userId
   })
-  .populate('participants', 'username avatar isOnline lastActive fullName')
+  .populate('participants', 'username avatar isOnline lastActive fullName premium')
   .populate('lastMessage')
   .sort('-updatedAt');
 
@@ -104,34 +105,7 @@ export const getMessages = asyncErrorHandler(async (req, res) => {
     data: messages
   });
 });
-// Upload chat images
-// export const uploadChatImages = asyncErrorHandler(async (req, res) => {
-//   if (!req.files || req.files.length === 0) {
-//     throw new CustomError('No images provided', 400);
-//   }
 
-//   const uploadPromises = req.files.map(async (file) => {
-//     const result = await uploadToCloudinary(file.path, 'chat_images');
-//     // Delete local file after upload
-//     try {
-//       fs.unlinkSync(file.path);
-//     } catch (error) {
-//       console.error('Error deleting local file:', error);
-//     }
-//     return {
-//       url: result.secure_url,
-//       type: 'image'
-//     };
-//   });
-
-//   const uploadedImages = await Promise.all(uploadPromises);
-
-//   res.status(200).json({
-//     status: 'success',
-//     data: uploadedImages
-//   });
-// });
-// Upload message media (images)
 export const uploadMessageMedia = asyncErrorHandler(async (req, res) => {
   if (!req.files || req.files.length === 0) {
     throw new CustomError('No images provided', 400);

@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
 const userSchema = new mongoose.Schema({
-  fullName: { type: String ,required: [true,'fullname is required'] },
+  fullName: { type: String, required: [true, 'Fullname is required'], maxLength: [16, 'Fullname must be less than 16 characters'] },
   username: { type: String, required: [true,'username is required'], unique: true },
   email:    { type: String, required: [true,'email is required'], unique: true, trim: true, lowercase: true ,
   match: [ /^\S+@\S+\.\S+$/, 'Please enter a valid email address' ]},
@@ -13,7 +13,13 @@ const userSchema = new mongoose.Schema({
   bookmarks: [{ type: mongoose.Schema.Types.ObjectId, ref: "Post" }],
   blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   password: { type: String, required: true ,select:false, minlength: [6, 'Password must be at least 6 characters long']},
-  isPremium: { type: Boolean, default: false },
+  premium: {
+    isActive: { type: Boolean, default: false },
+    subscribedAt: Date,
+    expiresAt: Date,
+    planId: String,
+    subscriptionId: String,
+  },
   passwordChangeAt: { type: Date },
   resetPasswordToken: { type: String },
   resetPasswordExpire: { type: Date },
@@ -29,6 +35,18 @@ const userSchema = new mongoose.Schema({
     type: String,
     enum: ['everyone', 'followers', 'following', 'mutualFollowers', 'no one'],
     default: 'everyone'
+  },
+  notificationPreferences: {
+    all: {
+      from: { type: String, enum: ['anyone', 'no one'], default: 'anyone' }
+    },
+    types: {
+      like:    { from: { type: String, enum: ['anyone', 'no one'], default: 'anyone' } },
+      comment: { from: { type: String, enum: ['anyone', 'no one'], default: 'anyone' } },
+      follow:  { from: { type: String, enum: ['anyone', 'no one'], default: 'anyone' } },
+      mention: { from: { type: String, enum: ['anyone', 'no one'], default: 'anyone' } },
+      repost:  { from: { type: String, enum: ['anyone', 'no one'], default: 'anyone' } }
+    }
   },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
@@ -67,8 +85,6 @@ userSchema.methods.createResetPasswordToken = function() {
 const resetToken = crypto.randomBytes(32).toString('hex'); // Generate a random plain token
 this.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');//encrypting the token
 this.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 minutes   
-console.log(`Encrypt Reset token: ${this.resetPasswordToken}`); // For debugging purposes
-return resetToken; 
 }
 const User = mongoose.model('User', userSchema);
 

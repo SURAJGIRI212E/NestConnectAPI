@@ -5,14 +5,13 @@ import asyncErrorHandler from '../utilities/asyncErrorHandler.js';
 import { generateAccessToken, verifyAccessToken, verifyRefreshToken } from '../utilities/token.js';
 
 const isAuthenticated = asyncErrorHandler(async (req, res, next) => {
-   
     const accessToken = req.cookies.access_token;
     const refreshToken = req.cookies.refresh_token;
-    
+  
     if (!accessToken && !refreshToken) {
+      
         return next(new CustomError('Please login to access this resource', 401));
     }
-
     try {
         // First try to verify access token
         if (accessToken) {
@@ -30,7 +29,7 @@ const isAuthenticated = asyncErrorHandler(async (req, res, next) => {
                 return next(new CustomError('Password changed recently. Please login again', 401));
             }
             
-            req.user = {_id:user._id, username: user.username,avatar:user.avatar, premium: user.isPremium, bookmarks: user.bookmarks};
+            req.user = {_id:user._id, username: user.username,avatar:user.avatar, premium: user.premium, bookmarks: user.bookmarks};
             return next();
         }
 
@@ -47,18 +46,18 @@ const isAuthenticated = asyncErrorHandler(async (req, res, next) => {
 
         // Generate new access token
         const newAccessToken = generateAccessToken(user._id);
-         console.log("newAccessToken");
        
-        // Set new access token in cookie
+        // Set new access token in cookie - align with login cookie settings
         res.cookie('access_token', newAccessToken, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
-            maxAge: 15 * 60 * 1000 // 15 minutes
+            secure: true,
+            sameSite: 'none',
+            path: '/',
+            expires: new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
         });
 
         // Set req.user after successful refresh token verification
-        req.user = {_id:user._id, username: user.username,avatar:user.avatar, premium: user.isPremium, bookmarks: user.bookmarks};
+        req.user = {_id:user._id, username: user.username,avatar:user.avatar, premium: user.premium, bookmarks: user.bookmarks};
 
         next();
 

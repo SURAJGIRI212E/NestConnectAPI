@@ -15,7 +15,7 @@ const postSchema = new mongoose.Schema({  ownerid: {
   },
   content: { 
     type: String,
-    maxLength: 280
+    maxLength: 1000
   },
   media: [{
     url: String,
@@ -140,8 +140,11 @@ postSchema.pre('save', async function(next) {
 
     // Set edit window and depth for new posts
     if (this.isNew) {
-        const createdTime = this.createdAt || new Date();
-        this.edits.editvalidtill = new Date(createdTime.getTime() + 15 * 60 * 1000);
+        // Only set editvalidtill if not already set (preserve premium/basic value from controller)
+        if (!this.edits.editvalidtill) {
+            const createdTime = this.createdAt || new Date();
+            this.edits.editvalidtill = new Date(createdTime.getTime() + 15 * 60 * 1000);
+        }
 
         // Set depth based on parent post
         if (this.parentPost) {
