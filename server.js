@@ -39,7 +39,7 @@ const allowedOrigins = [
 ];
 
 // Middleware
-app.set('trust proxy', 1); // for ngrok & cookies
+// app.set('trust proxy', 1); // for ngrok & cookies
 app.use(express.json());
 app.use(cookieParser());
 app.use(express.static('public'));
