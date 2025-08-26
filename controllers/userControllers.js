@@ -66,7 +66,7 @@ export const updateUserProfile = asyncErrorHandler(async (req, res, next) => {
         return next(new CustomError('Please provide at least one field to update', 400));
     }
        // Get current user to check existing images
-    if (fullName.length>16){
+    if (fullName && fullName.length>16){
         return next(new CustomError('Fullname must be less than 17 characters', 400));
     }
     const currentUser = await User.findById(req.user._id);
