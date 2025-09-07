@@ -58,33 +58,12 @@ app.use(
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true, // allow cookies/auth headers
-    methods: ["GET", "POST", "PUT", "DELETE"], // allowed methods
+    methods: ["GET", "POST", "PUT","PATCH", "DELETE"], // allowed methods
     allowedHeaders: ["Content-Type", "Authorization"], // allowed headers
   })
 );
 
-// Custom CORS middleware
-// app.use((req, res, next) => {
-//   const origin = req.headers.origin;
 
-//   const isNgrok = origin?.endsWith('.ngrok-free.app');
-
-//   if (origin && (allowedOrigins.includes(origin) || isNgrok)) {
-    
-//     res.setHeader('Access-Control-Allow-Origin', origin);
-//     res.setHeader('Access-Control-Allow-Credentials', 'true');
-//     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-//     res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,ngrok-skip-browser-warning');
-
-//     res.setHeader('Vary', 'Origin');
-//   }
-
-//   if (req.method === 'OPTIONS') {
-//     return res.sendStatus(204);
-//   }
-
-//   next();
-// });
 
 
 // Routes
@@ -141,7 +120,7 @@ const io = new Server(httpServer, {
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
-    methods: ["GET", "POST", "PATCH"],
+    methods: ["GET", "POST","PUT", "PATCH"],
     transports: ["websocket", "polling"],
   },
 });
