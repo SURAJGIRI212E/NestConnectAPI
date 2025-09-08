@@ -3,11 +3,12 @@ export default (error, req, res, next) => {
     error.status=error.status || 'error';
 
         if (process.env.NODE_ENV === 'development') {
+          
             res.status(error.statusCode).json({
                status:error.status,
-                message: error.message,
+                message: error.message ,
                 stackTrace:error.stack,
-                
+                error:error.error,
             });
         }
         else{//production error

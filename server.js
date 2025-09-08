@@ -1,7 +1,5 @@
 import express from 'express';
-import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import fs from 'fs';
 import { createServer } from 'http'; // use https if you have certs
 import { Server } from 'socket.io';
 import cookieParser from 'cookie-parser';
@@ -18,6 +16,7 @@ import followRoute from './routes/followRoute.js';
 import notiRoute from './routes/notiRoute.js';
 import chatRoute from './routes/chatRoute.js';
 import subscriptionRoute from './routes/subscriptionRoute.js';
+import { razorpayWebhook } from './controllers/subscriptionController.js';
 
 import { setupChatSocket } from './sockets/chatSocket.js';
 import { setupWebRTCSocket } from './sockets/webrtcSocket.js';
@@ -40,6 +39,8 @@ const allowedOrigins = [
 
 // Middleware
 // app.set('trust proxy', 1); // for ngrok & cookies
+// Razorpay webhook must use raw body for signature verification
+app.post('/api/subscription/webhook', express.raw({ type: 'application/json' }), razorpayWebhook);
 app.use(express.json());
 app.use(cookieParser());
 app.use(express.static('public'));
@@ -62,10 +63,6 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"], // allowed headers
   })
 );
-
-
-
-
 // Routes
 app.use('/api/auth', authRoute);
 app.use('/api/users', userRoute);

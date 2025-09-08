@@ -1,4 +1,4 @@
-// config/razorpay.js
+
 import Razorpay from 'razorpay';
 
 const razorpay = new Razorpay({

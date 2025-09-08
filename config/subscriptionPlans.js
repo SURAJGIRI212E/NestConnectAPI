@@ -12,4 +12,3 @@ export const subscriptionPlans = {
     duration: '1 year'
   }
 }; 
-subscriptionPlans.ANNUAL.id
