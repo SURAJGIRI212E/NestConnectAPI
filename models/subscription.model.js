@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 
 const subscriptionSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: [true,'current userid is required'] ,index: true},
-  status: { type: String, enum: ["ACTIVE", "EXPIRED"], default: null },
+  status: { type: String, enum: ["ACTIVE", "EXPIRED", "PAUSED", "CANCELLED", "PAST_DUE", "COMPLETED", "HALTED"], default: null },
   startDate: { type: Date, default: Date.now },
   endDate: { type: Date },
   plan: { type: String, enum: ["MONTHLY", "ANNUAL"],},
@@ -14,10 +14,6 @@ const subscriptionSchema = new mongoose.Schema({
 
 // Add indexes
 subscriptionSchema.index({ user: 1, status: 1 });
-subscriptionSchema.index({ endDate: 1 }, { 
-  expireAfterSeconds: 0,
-  partialFilterExpression: { status: "EXPIRED" }
-});
 
 // Pre-save middleware to set end date
 subscriptionSchema.pre('save', function(next) {

@@ -24,8 +24,6 @@ export const createSubscription = asyncErrorHandler(async (req, res) => {
     // Attach our user id for mapping on webhook
     notes: { userId: userId.toString() },
   });
-
- 
   // Do NOT create subscription in DB here. Only create after payment confirmation in webhook for security.
   res.json({ subscriptionId: subscription.id });
 });
@@ -63,6 +61,7 @@ export const getSubscriptionStatus = asyncErrorHandler(async (req, res) => {
 });
 
 export const razorpayWebhook = asyncErrorHandler(async (req, res) => {
+  console.log("razorpayWebhook");
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
   const signature = req.headers['x-razorpay-signature'];
   const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
@@ -79,40 +78,136 @@ export const razorpayWebhook = asyncErrorHandler(async (req, res) => {
   const payload = JSON.parse(rawBody.toString('utf8'));
   const event = payload.event;
 
-  if (event === 'subscription.activated') {
-    const entity = payload.payload.subscription.entity;
-    const subscriptionId = entity.id;
-    const mappedUserId = entity.notes?.userId; // set during createSubscription
-    if (!mappedUserId) {
-      throw new CustomError('Missing userId in notes', 400);
-    }
+  const entity = payload.payload.subscription?.entity;
 
-    const subscription = await Subscription.create({
-      user: mappedUserId,
-      status: 'ACTIVE',
-      plan: entity.plan_id === subscriptionPlans.ANNUAL.id ? 'ANNUAL' : 'MONTHLY',
-      paymentProvider: 'Razorpay',
-      paymentId: subscriptionId,
-      startDate: new Date(entity.start_at * 1000),
-      endDate: new Date(entity.end_at * 1000)
-    });
-    await User.findByIdAndUpdate(
-      mappedUserId,
-      {
+  switch (event) {
+    case 'subscription.activated': {
+      const mappedUserId = entity.notes?.userId;
+      if (!mappedUserId) throw new CustomError('Missing userId in notes', 400);
+      const startDate = new Date(entity.start_at * 1000);
+      const endDate = new Date(entity.end_at * 1000);
+      await Subscription.findOneAndUpdate(
+        { user: mappedUserId, paymentId: entity.id },
+        {
+          user: mappedUserId,
+          status: 'ACTIVE',
+          plan: entity.plan_id === subscriptionPlans.ANNUAL.id ? 'ANNUAL' : 'MONTHLY',
+          paymentProvider: 'Razorpay',
+          paymentId: entity.id,
+          startDate,
+          endDate
+        },
+        { upsert: true, new: true }
+      );
+      await User.findByIdAndUpdate(mappedUserId, {
         premium: {
           isActive: true,
-          subscribedAt: subscription.startDate,
-          expiresAt: subscription.endDate,
+          subscribedAt: startDate,
+          expiresAt: endDate,
           planId: entity.plan_id,
-          subscriptionId: subscriptionId
+          subscriptionId: entity.id
+        }
+      });
+      break;
+    }
+
+    case 'subscription.charged': {
+      const mappedUserId = entity.notes?.userId;
+      if (mappedUserId) {
+        const newEnd = entity.end_at ? new Date(entity.end_at * 1000) : undefined;
+        const update = { status: 'ACTIVE' };
+        if (newEnd) update.endDate = newEnd;
+        await Subscription.findOneAndUpdate(
+          { user: mappedUserId, paymentId: entity.id },
+          update,
+          { new: true }
+        );
+        if (newEnd) {
+          await User.findByIdAndUpdate(mappedUserId, { 'premium.expiresAt': newEnd, 'premium.isActive': true });
+        } else {
+          await User.findByIdAndUpdate(mappedUserId, { 'premium.isActive': true });
         }
       }
-    );
+      break;
+    }
+
+    case 'subscription.payment_failed': {
+      const mappedUserId = entity.notes?.userId;
+      if (mappedUserId) {
+        await Subscription.findOneAndUpdate(
+          { user: mappedUserId, paymentId: entity.id },
+          { status: 'PAST_DUE' }
+        );
+        await User.findByIdAndUpdate(mappedUserId, { 'premium.isActive': false });
+      }
+      break;
+    }
+
+    case 'subscription.cancelled': {
+      const mappedUserId = entity.notes?.userId;
+      if (mappedUserId) {
+        await Subscription.findOneAndUpdate(
+          { user: mappedUserId, paymentId: entity.id },
+          { status: 'CANCELLED' }
+        );
+        await User.findByIdAndUpdate(mappedUserId, { 'premium.isActive': false });
+      }
+      break;
+    }
+
+    case 'subscription.paused': {
+      const mappedUserId = entity.notes?.userId;
+      if (mappedUserId) {
+        await Subscription.findOneAndUpdate(
+          { user: mappedUserId, paymentId: entity.id },
+          { status: 'PAUSED' }
+        );
+        await User.findByIdAndUpdate(mappedUserId, { 'premium.isActive': false });
+      }
+      break;
+    }
+
+    case 'subscription.resumed': {
+      const mappedUserId = entity.notes?.userId;
+      if (mappedUserId) {
+        await Subscription.findOneAndUpdate(
+          { user: mappedUserId, paymentId: entity.id },
+          { status: 'ACTIVE' }
+        );
+        await User.findByIdAndUpdate(mappedUserId, { 'premium.isActive': true });
+      }
+      break;
+    }
+
+    case 'subscription.completed': {
+      const mappedUserId = entity.notes?.userId;
+      if (mappedUserId) {
+        await Subscription.findOneAndUpdate(
+          { user: mappedUserId, paymentId: entity.id },
+          { status: 'COMPLETED' }
+        );
+        await User.findByIdAndUpdate(mappedUserId, { 'premium.isActive': false });
+      }
+      break;
+    }
+
+    case 'subscription.halted': {
+      const mappedUserId = entity.notes?.userId;
+      if (mappedUserId) {
+        await Subscription.findOneAndUpdate(
+          { user: mappedUserId, paymentId: entity.id },
+          { status: 'HALTED' }
+        );
+        await User.findByIdAndUpdate(mappedUserId, { 'premium.isActive': false });
+      }
+      break;
+    }
+
+    default:
+      break;
   }
 
-  // Other events can be handled here (charged, payment_failed, paused, cancelled)
-
-  res.status(200).send('OK');
+  return res.status(200).send('OK');
 });
 
 export const cancelSubscription = asyncErrorHandler(async (req, res) => {

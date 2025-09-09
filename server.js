@@ -39,6 +39,8 @@ const allowedOrigins = [
 
 // Middleware
 // app.set('trust proxy', 1); // for ngrok & cookies
+
+
 // Razorpay webhook must use raw body for signature verification
 app.post('/api/subscription/webhook', express.raw({ type: 'application/json' }), razorpayWebhook);
 app.use(express.json());
