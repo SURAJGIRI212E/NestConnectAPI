@@ -79,12 +79,14 @@ export const razorpayWebhook = asyncErrorHandler(async (req, res) => {
   const event = payload.event;
 
   const entity = payload.payload.subscription?.entity;
+  console.log("entity",entity);
 
   switch (event) {
     case 'subscription.activated': {
       console.log("subscription.activated");
       const mappedUserId = entity.notes?.userId;
       if (!mappedUserId) throw new CustomError('Missing userId in notes', 400);
+      console.log("mappedUserId",mappedUserId);
       const startDate = new Date(entity.start_at * 1000);
       const endDate = new Date(entity.end_at * 1000);
       await Subscription.findOneAndUpdate(
