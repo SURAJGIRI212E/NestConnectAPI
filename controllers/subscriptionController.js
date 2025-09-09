@@ -82,6 +82,7 @@ export const razorpayWebhook = asyncErrorHandler(async (req, res) => {
 
   switch (event) {
     case 'subscription.activated': {
+      console.log("subscription.activated");
       const mappedUserId = entity.notes?.userId;
       if (!mappedUserId) throw new CustomError('Missing userId in notes', 400);
       const startDate = new Date(entity.start_at * 1000);
@@ -112,6 +113,7 @@ export const razorpayWebhook = asyncErrorHandler(async (req, res) => {
     }
 
     case 'subscription.charged': {
+      console.log("subscription.charged");
       const mappedUserId = entity.notes?.userId;
       if (mappedUserId) {
         const newEnd = entity.end_at ? new Date(entity.end_at * 1000) : undefined;
@@ -132,6 +134,7 @@ export const razorpayWebhook = asyncErrorHandler(async (req, res) => {
     }
 
     case 'subscription.payment_failed': {
+      console.log("subscription.payment_failed");
       const mappedUserId = entity.notes?.userId;
       if (mappedUserId) {
         await Subscription.findOneAndUpdate(
@@ -144,6 +147,7 @@ export const razorpayWebhook = asyncErrorHandler(async (req, res) => {
     }
 
     case 'subscription.cancelled': {
+      console.log("subscription.cancelled");
       const mappedUserId = entity.notes?.userId;
       if (mappedUserId) {
         await Subscription.findOneAndUpdate(
@@ -156,6 +160,7 @@ export const razorpayWebhook = asyncErrorHandler(async (req, res) => {
     }
 
     case 'subscription.paused': {
+      console.log("subscription.paused");
       const mappedUserId = entity.notes?.userId;
       if (mappedUserId) {
         await Subscription.findOneAndUpdate(
@@ -168,6 +173,7 @@ export const razorpayWebhook = asyncErrorHandler(async (req, res) => {
     }
 
     case 'subscription.resumed': {
+      console.log("subscription.resumed");
       const mappedUserId = entity.notes?.userId;
       if (mappedUserId) {
         await Subscription.findOneAndUpdate(
@@ -180,6 +186,7 @@ export const razorpayWebhook = asyncErrorHandler(async (req, res) => {
     }
 
     case 'subscription.completed': {
+      console.log("subscription.completed");
       const mappedUserId = entity.notes?.userId;
       if (mappedUserId) {
         await Subscription.findOneAndUpdate(
@@ -192,6 +199,7 @@ export const razorpayWebhook = asyncErrorHandler(async (req, res) => {
     }
 
     case 'subscription.halted': {
+      console.log("subscription.halted");
       const mappedUserId = entity.notes?.userId;
       if (mappedUserId) {
         await Subscription.findOneAndUpdate(
