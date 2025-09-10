@@ -91,8 +91,7 @@ const login = asyncErrorHandler(async (req, res, next) => {
         message: 'Login successful',
         userid: user._id,
         username: user.username,
-       accessToken,
-        refreshToken,
+        subscription: user.premium
     });
 });
 

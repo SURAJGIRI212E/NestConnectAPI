@@ -24,6 +24,7 @@ export const createSubscription = asyncErrorHandler(async (req, res) => {
     // Attach our user id for mapping on webhook
     notes: { userId: userId.toString() },
   });
+  
   // Do NOT create subscription in DB here. Only create after payment confirmation in webhook for security.
   res.json({ subscriptionId: subscription.id });
 });
@@ -48,6 +49,7 @@ export const getSubscriptionStatus = asyncErrorHandler(async (req, res) => {
       createdAt: null
     });
   }
+  console.log("subscription",subscription)
   res.json({
     isActive: subscription.isActive(),
     plan: subscription.plan,
