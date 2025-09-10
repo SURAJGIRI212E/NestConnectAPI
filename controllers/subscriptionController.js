@@ -89,8 +89,10 @@ export const razorpayWebhook = asyncErrorHandler(async (req, res) => {
       const mappedUserId = entity.notes?.userId;
       if (!mappedUserId) throw new CustomError('Missing userId in notes', 400);
       console.log("mappedUserId",mappedUserId);
-      const startDate = new Date(entity.start_at * 1000);
-      const endDate = new Date(entity.end_at * 1000);
+      const startEpoch = entity.current_start || entity.start_at;
+      const endEpoch = entity.current_end || entity.end_at;
+      const startDate = startEpoch ? new Date(startEpoch * 1000) : new Date();
+      const endDate = endEpoch ? new Date(endEpoch * 1000) : new Date(startDate.getTime());
       await Subscription.findOneAndUpdate(
         { user: mappedUserId, paymentId: entity.id },
         {
@@ -120,7 +122,8 @@ export const razorpayWebhook = asyncErrorHandler(async (req, res) => {
       console.log("subscription.charged");
       const mappedUserId = entity.notes?.userId;
       if (mappedUserId) {
-        const newEnd = entity.end_at ? new Date(entity.end_at * 1000) : undefined;
+        const endEpoch = entity.current_end || entity.end_at;
+        const newEnd = endEpoch ? new Date(endEpoch * 1000) : undefined;
         const update = { status: 'ACTIVE' };
         if (newEnd) update.endDate = newEnd;
         await Subscription.findOneAndUpdate(
