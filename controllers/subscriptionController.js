@@ -18,10 +18,31 @@ export const createSubscription = asyncErrorHandler(async (req, res) => {
   const isAnnual = planId === subscriptionPlans.ANNUAL.id;
   // No auto-renewal for annual
   const totalCount = isAnnual ? 1 : 12;
+  // Fetch user to get email and stored customer id
+  const user = await User.findById(userId).lean();
+  if (!user) throw new CustomError('User not found', 404);
+  let customerId = user.razorpayCustomerId;
+  if (!customerId) {
+    const customer = await razorpay.customers.create({
+      name: user.fullName,
+      email: user.email,
+      notes: { userId: userId.toString() }
+    });
+    customerId = customer.id;
+    await User.findByIdAndUpdate(userId, { razorpayCustomerId: customerId });
+  } else {
+    // Ensure email is up to date at Razorpay
+    try {
+      await razorpay.customers.edit(customerId, { email: user.email, name: user.fullName });
+    } catch (error) {
+      console.log('Razorpay customer edit failed (non-fatal):', error?.message || error);
+    }
+  }
   const subscription = await razorpay.subscriptions.create({
     plan_id: planId,
     customer_notify: 1,
     total_count: totalCount,
+    customer_id: customerId,
     // Attach our user id for mapping on webhook
     notes: { userId: userId.toString() },
   });
@@ -50,7 +71,7 @@ export const getSubscriptionStatus = asyncErrorHandler(async (req, res) => {
       createdAt: null
     });
   }
-  console.log("subscription",subscription)
+ 
   res.json({
     isActive: subscription.isActive(),
     plan: subscription.plan,

@@ -20,6 +20,7 @@ const userSchema = new mongoose.Schema({
     planId: String,
     subscriptionId: String,
   },
+  razorpayCustomerId: { type: String },
   passwordChangeAt: { type: Date },
   resetPasswordToken: { type: String },
   resetPasswordExpire: { type: Date },
