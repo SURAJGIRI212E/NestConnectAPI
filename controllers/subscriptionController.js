@@ -16,6 +16,7 @@ export const createSubscription = asyncErrorHandler(async (req, res) => {
   }
   console.log("createSubscription...");
   const isAnnual = planId === subscriptionPlans.ANNUAL.id;
+  // No auto-renewal for annual
   const totalCount = isAnnual ? 1 : 12;
   const subscription = await razorpay.subscriptions.create({
     plan_id: planId,
@@ -192,18 +193,7 @@ export const razorpayWebhook = asyncErrorHandler(async (req, res) => {
       break;
     }
 
-    case 'subscription.completed': {
-      console.log("subscription.completed");
-      const mappedUserId = entity.notes?.userId;
-      if (mappedUserId) {
-        await Subscription.findOneAndUpdate(
-          { user: mappedUserId, paymentId: entity.id },
-          { status: 'COMPLETED' }
-        );
-        await User.findByIdAndUpdate(mappedUserId, { 'premium.isActive': false });
-      }
-      break;
-    }
+    // We intentionally ignore 'subscription.completed' here for non-renewing annual.
 
     case 'subscription.halted': {
       console.log("subscription.halted");
