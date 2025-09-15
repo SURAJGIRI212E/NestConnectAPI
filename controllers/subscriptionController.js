@@ -9,46 +9,67 @@ import CustomError from '../utilities/CustomError.js';
 
 export const createSubscription = asyncErrorHandler(async (req, res) => {
   const { planId } = req.body;
-  console.log("planId",planId)
-  const userId = req.user?._id; // If not present, handle accordingly
-  if (!userId) {
-    throw new CustomError('Authentication required', 401);
-  }
-  console.log("createSubscription...");
-  const isAnnual = planId === subscriptionPlans.ANNUAL.id;
-  // No auto-renewal for annual
-  const totalCount = isAnnual ? 1 : 12;
-  // Fetch user to get email and stored customer id
-  const user = await User.findById(userId).lean();
+  const userId = req.user?._id;
+  if (!userId) throw new CustomError('Authentication required', 401);
+
+  const user = await User.findById(userId);
   if (!user) throw new CustomError('User not found', 404);
+
   let customerId = user.razorpayCustomerId;
+
   if (!customerId) {
-    const customer = await razorpay.customers.create({
-      name: user.fullName,
-      email: user.email,
-      notes: { userId: userId.toString() }
-    });
-    customerId = customer.id;
-    await User.findByIdAndUpdate(userId, { razorpayCustomerId: customerId });
+    try {
+      const customer = await razorpay.customers.create({
+        name: user.fullName,
+        email: user.email,
+        fail_existing: '0',
+        notes: { userId: userId.toString() }
+      });
+      customerId = customer.id;
+      user.razorpayCustomerId = customerId;
+      await user.save();
+    } catch (err) {
+      const desc = err?.error?.description || err?.message || '';
+      if (desc.includes('Customer already exists') || desc.includes('customer already exists')) {
+        // Attempt to find existing customer by email
+        try {
+          const list = await razorpay.customers.all({ email: user.email });
+          if (list && Array.isArray(list.items) && list.items.length > 0) {
+            customerId = list.items[0].id;
+            user.razorpayCustomerId = customerId;
+            await user.save();
+          } else {
+            console.error('Customer exists but could not be found via customers.all', user.email);
+            throw new CustomError('Could not locate existing Razorpay customer', 500);
+          }
+        } catch (findErr) {
+          console.error('Error finding existing Razorpay customer', findErr);
+          throw new CustomError('Could not create or locate Razorpay customer', 500);
+        }
+      } else {
+        console.error('Error creating Razorpay customer', err);
+        throw new CustomError('Could not create Razorpay customer', 500);
+      }
+    }
   } else {
-    // Ensure email is up to date at Razorpay
+    // try to keep customer record updated
     try {
       await razorpay.customers.edit(customerId, { email: user.email, name: user.fullName });
-    } catch (error) {
-      console.log('Razorpay customer edit failed (non-fatal):', error?.message || error);
+    } catch (err) {
+      console.warn('Could not update Razorpay customer (non-fatal)', err?.message || err);
     }
   }
+
+  const totalCount = planId === subscriptionPlans.MONTHLY.id ? 12 : 1;
+
   const subscription = await razorpay.subscriptions.create({
     plan_id: planId,
     customer_notify: 1,
-    total_count: totalCount,
     customer_id: customerId,
-    // Attach our user id for mapping on webhook
-    notes: { userId: userId.toString() },
+    total_count: totalCount,
   });
-  
-  // Do NOT create subscription in DB here. Only create after payment confirmation in webhook for security.
-  res.json({ subscriptionId: subscription.id });
+
+  return res.json({ subscriptionId: subscription.id });
 });
 
 export const getPlans = (req, res) => {
@@ -85,7 +106,7 @@ export const getSubscriptionStatus = asyncErrorHandler(async (req, res) => {
 });
 
 export const razorpayWebhook = asyncErrorHandler(async (req, res) => {
-  console.log("razorpayWebhook");
+  
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
   const signature = req.headers['x-razorpay-signature'];
   const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
@@ -101,24 +122,48 @@ export const razorpayWebhook = asyncErrorHandler(async (req, res) => {
 
   const payload = JSON.parse(rawBody.toString('utf8'));
   const event = payload.event;
+  const entity = payload.payload?.subscription?.entity;
 
-  const entity = payload.payload.subscription?.entity;
-  console.log("entity",entity);
+  if (!entity) {
+    // Not a subscription payload we care about
+    return res.status(200).send('OK');
+  }
+
+  // Helper to find our user: prefer razorpay customer id, fall back to notes.userId
+  const findUserFromEntity = async (ent) => {
+    if (!ent) return null;
+    if (ent.customer_id) {
+      const user = await User.findOne({ razorpayCustomerId: ent.customer_id });
+      if (user) return user;
+    }
+    if (ent.notes?.userId) {
+      const userById = await User.findById(ent.notes.userId);
+      if (userById) return userById;
+    }
+    return null;
+  };
+
+  const startEpoch = entity.current_start || entity.start_at;
+  const endEpoch = entity.current_end || entity.end_at;
+  const startDate = startEpoch ? new Date(startEpoch * 1000) : new Date();
+  const endDate = endEpoch ? new Date(endEpoch * 1000) : null;
 
   switch (event) {
-    case 'subscription.activated': {
-      console.log("subscription.activated");
-      const mappedUserId = entity.notes?.userId;
-      if (!mappedUserId) throw new CustomError('Missing userId in notes', 400);
-      console.log("mappedUserId",mappedUserId);
-      const startEpoch = entity.current_start || entity.start_at;
-      const endEpoch = entity.current_end || entity.end_at;
-      const startDate = startEpoch ? new Date(startEpoch * 1000) : new Date();
-      const endDate = endEpoch ? new Date(endEpoch * 1000) : new Date(startDate.getTime());
+    case 'subscription.activated':
+    case 'subscription.resumed':
+    case 'subscription.charged': {
+      console.log(event);
+      const user = await findUserFromEntity(entity);
+      if (!user) {
+        console.warn('Webhook: no user found for entity', entity.id);
+        return res.status(200).send('OK');
+      }
+
+      // Upsert subscription record
       await Subscription.findOneAndUpdate(
-        { user: mappedUserId, paymentId: entity.id },
+        { user: user._id, paymentId: entity.id },
         {
-          user: mappedUserId,
+          user: user._id,
           status: 'ACTIVE',
           plan: entity.plan_id === subscriptionPlans.ANNUAL.id ? 'ANNUAL' : 'MONTHLY',
           paymentProvider: 'Razorpay',
@@ -128,108 +173,59 @@ export const razorpayWebhook = asyncErrorHandler(async (req, res) => {
         },
         { upsert: true, new: true }
       );
-      await User.findByIdAndUpdate(mappedUserId, {
-        premium: {
-          isActive: true,
-          subscribedAt: startDate,
-          expiresAt: endDate,
-          planId: entity.plan_id,
-          subscriptionId: entity.id
-        }
-      });
-      break;
-    }
 
-    case 'subscription.charged': {
-      console.log("subscription.charged");
-      const mappedUserId = entity.notes?.userId;
-      if (mappedUserId) {
-        const endEpoch = entity.current_end || entity.end_at;
-        const newEnd = endEpoch ? new Date(endEpoch * 1000) : undefined;
-        const update = { status: 'ACTIVE' };
-        if (newEnd) update.endDate = newEnd;
-        await Subscription.findOneAndUpdate(
-          { user: mappedUserId, paymentId: entity.id },
-          update,
-          { new: true }
-        );
-        if (newEnd) {
-          await User.findByIdAndUpdate(mappedUserId, { 'premium.expiresAt': newEnd, 'premium.isActive': true });
-        } else {
-          await User.findByIdAndUpdate(mappedUserId, { 'premium.isActive': true });
-        }
-      }
+      // Update user premium
+      const userUpdate = { 'premium.isActive': true };
+      if (endDate) userUpdate['premium.expiresAt'] = endDate;
+      userUpdate['premium.subscribedAt'] = startDate;
+      userUpdate['premium.planId'] = entity.plan_id;
+      userUpdate['premium.subscriptionId'] = entity.id;
+
+      await User.findByIdAndUpdate(user._id, userUpdate);
       break;
     }
 
     case 'subscription.payment_failed': {
-      console.log("subscription.payment_failed");
-      const mappedUserId = entity.notes?.userId;
-      if (mappedUserId) {
+      console.log('subscription.payment_failed');
+      const user = await findUserFromEntity(entity);
+      if (user) {
         await Subscription.findOneAndUpdate(
-          { user: mappedUserId, paymentId: entity.id },
+          { user: user._id, paymentId: entity.id },
           { status: 'PAST_DUE' }
         );
-        await User.findByIdAndUpdate(mappedUserId, { 'premium.isActive': false });
+        await User.findByIdAndUpdate(user._id, { 'premium.isActive': false });
       }
       break;
     }
 
     case 'subscription.cancelled': {
-      console.log("subscription.cancelled");
-      const mappedUserId = entity.notes?.userId;
-      if (mappedUserId) {
+      console.log('subscription.cancelled');
+      const user = await findUserFromEntity(entity);
+      if (user) {
         await Subscription.findOneAndUpdate(
-          { user: mappedUserId, paymentId: entity.id },
+          { user: user._id, paymentId: entity.id },
           { status: 'CANCELLED' }
         );
-        await User.findByIdAndUpdate(mappedUserId, { 'premium.isActive': false });
+        await User.findByIdAndUpdate(user._id, { 'premium.isActive': false });
       }
       break;
     }
 
     case 'subscription.paused': {
-      console.log("subscription.paused");
-      const mappedUserId = entity.notes?.userId;
-      if (mappedUserId) {
+      console.log('subscription.paused');
+      const user = await findUserFromEntity(entity);
+      if (user) {
         await Subscription.findOneAndUpdate(
-          { user: mappedUserId, paymentId: entity.id },
+          { user: user._id, paymentId: entity.id },
           { status: 'PAUSED' }
         );
-        await User.findByIdAndUpdate(mappedUserId, { 'premium.isActive': false });
-      }
-      break;
-    }
-
-    case 'subscription.resumed': {
-      console.log("subscription.resumed");
-      const mappedUserId = entity.notes?.userId;
-      if (mappedUserId) {
-        await Subscription.findOneAndUpdate(
-          { user: mappedUserId, paymentId: entity.id },
-          { status: 'ACTIVE' }
-        );
-        await User.findByIdAndUpdate(mappedUserId, { 'premium.isActive': true });
-      }
-      break;
-    }
-
-    // We intentionally ignore 'subscription.completed' here for non-renewing annual.
-
-    case 'subscription.halted': {
-      console.log("subscription.halted");
-      const mappedUserId = entity.notes?.userId;
-      if (mappedUserId) {
-        await Subscription.findOneAndUpdate(
-          { user: mappedUserId, paymentId: entity.id },
-          { status: 'HALTED' }
-        );
-        await User.findByIdAndUpdate(mappedUserId, { 'premium.isActive': false });
+        await User.findByIdAndUpdate(user._id, { 'premium.isActive': false });
       }
       break;
     }
 
     default:
+      console.log('Unhandled event', event);
       break;
   }
 

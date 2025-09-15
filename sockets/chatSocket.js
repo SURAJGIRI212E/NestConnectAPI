@@ -23,7 +23,7 @@ export const setupChatSocket = (io) => {
   ioInstance = io; // Store the io instance
   io.on('connection', async (socket) => {
     const userId = socket.handshake.auth.userId;
-    console.log("userid connecetd",userId,socket.id)
+    // console.log("userid connecetd",userId,socket.id)
     if (!userId) return;
 
     // Handle user connection

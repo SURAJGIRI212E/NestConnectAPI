@@ -38,7 +38,7 @@ const allowedOrigins = [
 ];
 
 // Middleware
-// app.set('trust proxy', 1); // for ngrok & cookies
+// app.set('trust proxy', 1); // for ngrok & cookies✅
 
 
 // Razorpay webhook must use raw body for signature verification
@@ -65,6 +65,23 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"], // allowed headers
   })
 );
+
+//cors for ngrok testing✅
+// app.use(
+//   cors({
+//     origin: (origin, callback) => {
+//       if (!origin) return callback(null, true);
+//       if (allowedOrigins.includes(origin) || origin.endsWith('.ngrok-free.app')) {
+//         return callback(null, true);
+//       }
+//       callback(new Error('Not allowed by CORS'));
+//     },
+//     credentials: true,
+//     methods: ['GET', 'POST', 'PATCH','PUT','DELETE'],
+    
+//   })
+// );
+
 // Routes
 app.use('/api/auth', authRoute);
 app.use('/api/users', userRoute);
@@ -120,12 +137,11 @@ const io = new Server(httpServer, {
     },
     credentials: true,
     methods: ["GET", "POST", "PATCH","PUT","DELETE"],
-    methods: ["GET", "POST","PUT", "PATCH"],
     transports: ["websocket", "polling"],
   },
 });
 
-// Setup Socket.IO in development mode
+// Setup Socket.IO in development mode ngrok✅
 // const io = new Server(httpServer, {
 //   cors: {
 //     origin: (origin, callback) => {
@@ -149,7 +165,7 @@ const startServer = async () => {
   try {
     await connectDB();
     httpServer.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
+      console.log(`🚀 Server running on ${PORT} port`);
     });
   } catch (err) {
     console.error('❌ Server start error:', err);
