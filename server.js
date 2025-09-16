@@ -47,6 +47,7 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(express.static('public'));
 
+
 //cors in production
 app.use(
   cors({
