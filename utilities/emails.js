@@ -2,7 +2,7 @@ import nodemailer from 'nodemailer';
 
 const sendEmail=async (options)=>{
 
-    var transporter = nodemailer.createTransport({
+    let transporter = nodemailer.createTransport({
         host: process.env.USER_HOST,
         port: process.env.USER_PORT,
         auth: {
@@ -15,7 +15,7 @@ const sendEmail=async (options)=>{
         from: 'NestConnect support <nestconnectsupport.co>',
         to: options.email,
         subject: options.subject,
-        text: options.message,
+        html: options.message,
     };
 
     try {
