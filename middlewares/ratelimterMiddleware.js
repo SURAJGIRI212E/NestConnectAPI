@@ -14,7 +14,7 @@ export const resetPasswordLimiter = rateLimit({
 
 // Auth limiter (login/register)
 export const authLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000, // 10 minutes
+  windowMs: 5 * 60 * 1000, // 5 minutes
   max: 10,
   message: {
     status: 'error',
@@ -39,7 +39,7 @@ export const userSearchLimiter = rateLimit({
 // Post creation limiter
 export const postCreateLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
-  max: 8,
+  max: 10,
   message: {
     status: 'error',
     message: 'Too many posts created from this IP, please try again later.'
@@ -50,7 +50,7 @@ export const postCreateLimiter = rateLimit({
 
 // Follow/unfollow limiter
 export const followLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000, // 10 minutes
+  windowMs: 5 * 60 * 1000, // 5 minutes
   max: 15,
   message: {
     status: 'error',
@@ -62,7 +62,7 @@ export const followLimiter = rateLimit({
 
 // Bookmark limiter
 export const bookmarkLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000, // 10 minutes
+  windowMs: 5 * 60 * 1000, // 5 minutes
   max: 20,
   message: {
     status: 'error',
