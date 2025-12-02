@@ -12,7 +12,7 @@ const register = asyncErrorHandler(async (req, res,next) => {
 
         // // Validate required fields
         if (!username || !email || !fullName || !password) {
-            return res.status(400).json({ message: 'All fields are required' });
+             return next(new CustomError('All fields are required', 400));
         }
 
 
@@ -25,9 +25,7 @@ const register = asyncErrorHandler(async (req, res,next) => {
         });
 
         if (existingUser) {
-            return res.status(400).json({ 
-                message: 'Username or email already exists' 
-            });
+             return next(new CustomError('Username or email already exists', 400));
         }
 
         // Create new user

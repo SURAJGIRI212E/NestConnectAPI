@@ -8,7 +8,7 @@ import { addInteractionFlags } from '../controllers/postControllers.js';
 import { getCurrentUserInteractionData } from '../utilities/userInteractionUtils.js';
 import SubscriptionModel from '../models/subscription.model.js';
 
-// Get user profile by username done
+// Get user profile by username 
 export const getUserByUsername = asyncErrorHandler(async (req, res, next) => {
     const { username } = req.params;
     const loggedInUserId = req.user._id;
@@ -56,7 +56,7 @@ export const getUserByUsername = asyncErrorHandler(async (req, res, next) => {
     });
   });
 
-// Update user profile done
+// Update user profile 
 export const updateUserProfile = asyncErrorHandler(async (req, res, next) => {
     const { fullName, bio } = req.body;
     const avatarFile = req.files?.avatar;
@@ -149,7 +149,7 @@ export const toggleBookmark = asyncErrorHandler(async (req, res, next) => {
     ).select("bookmarks");
 
     // After updating bookmarks, ensure the frontend can reflect the change immediately for the bookmark page.
-    // We will not add `addInteractionFlags` here directly as it's a mutation, not a query of posts.
+    //  will not add `addInteractionFlags` here directly as it's a mutation, not a query of posts.
     // The `useToggleBookmarkMutation` in frontend invalidates the `userBookmarks` query on success, 
     // which will trigger a re-fetch with the correct flags.
 
@@ -218,7 +218,7 @@ export const getUserBookmarks = asyncErrorHandler(async (req, res, next) => {
     });
 });
 
-// Block/Unblock user done
+// Block/Unblock user 
 export const toggleBlockUser = asyncErrorHandler(async (req, res, next) => {
     const { userId } = req.params;
 
@@ -293,7 +293,7 @@ export const searchUsers = asyncErrorHandler(async (req, res, next) => {
         users.map(async (user) => {
             const isFollowing = await Follow.isFollowing(currentUserId, user._id);
             let premium = user.premium || {};
-            // Optionally, fetch latest subscription for each user (if needed for accuracy)
+            // Optionally, fetching latest subscription for each user (if needed for accuracy)
             // const subscription = await SubscriptionModel.findOne({ user: user._id }).sort({ createdAt: -1 });
             // if (subscription) {
             //   premium = {
