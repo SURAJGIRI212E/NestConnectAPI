@@ -160,7 +160,7 @@ export const toggleBookmark = asyncErrorHandler(async (req, res, next) => {
     });
 });
 
-// Get user bookmarks
+// Get user bookmarks*
 export const getUserBookmarks = asyncErrorHandler(async (req, res, next) => {
     const userId = req.user._id;
     const page = parseInt(req.query.page) || 1;
@@ -265,7 +265,7 @@ export const getBlockedUsers = asyncErrorHandler(async (req, res) => {
     });
 });
 
-
+// Search users by username or fullName*
 export const searchUsers = asyncErrorHandler(async (req, res, next) => {
     const { query, page = 1, limit = 10 } = req.query;
     const currentUserId = req.user._id;
@@ -326,7 +326,7 @@ export const searchUsers = asyncErrorHandler(async (req, res, next) => {
     });
 });
 
-// Get suggested users for the current user
+// Get suggested users for the current user*
 export const getSuggestedUsers = asyncErrorHandler(async (req, res) => {
     const userId = req.user._id;
     const limit = parseInt(req.query.limit) || 5;

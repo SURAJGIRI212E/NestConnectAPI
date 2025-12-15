@@ -116,7 +116,7 @@ app.get('/test', (req, res) => {
 });
 
 // 404 handler
-app.all('*', (req, res, next) => {
+app.all(/(.*)/, (req, res, next) => {
   next(new CustomError(`${req.originalUrl} not found`, 404));
 });
 
