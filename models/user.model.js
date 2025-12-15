@@ -57,17 +57,11 @@ const userSchema = new mongoose.Schema({
 userSchema.index({ username: 1, email: 1 });
 
 // Hash password before saving
-userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
-  
-  try {
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
-  } catch (error) {
-    next(error);
-  }
+userSchema.pre('save', async function () {
+  if (!this.isModified('password')) return;
+  this.password = await bcrypt.hash(this.password, 10);
 });
+
 
 // Method to compare passwords
 userSchema.methods.comparePassword = async function(candidatePassword) {
@@ -82,7 +76,6 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 }
 
 userSchema.methods.createResetPasswordToken = function() {   
-
 const resetToken = crypto.randomBytes(32).toString('hex'); // Generate a random plain token
 this.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');//encrypting the token
 this.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 minutes   
