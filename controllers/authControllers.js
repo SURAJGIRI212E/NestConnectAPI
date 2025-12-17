@@ -71,7 +71,7 @@ const login = asyncErrorHandler(async (req, res, next) => {
   secure: true,
   sameSite: 'none',
   path: '/',
-        expires: new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
+        expires: new Date(Date.now() + 60 * 60 * 1000) // 60 minutes
     });
 
     // Set refresh token in cookie
