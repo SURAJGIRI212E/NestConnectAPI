@@ -82,7 +82,7 @@ export const getMessages = asyncErrorHandler(async (req, res) => {
     .limit(limit)
     .populate('senderId', 'username avatar');
 
-  // Mark messages as read
+
   // Mark messages as read
   const messageIds = messages.map(msg => msg._id);
   await Message.updateMany(

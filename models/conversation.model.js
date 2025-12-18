@@ -35,15 +35,6 @@ const conversationSchema = new mongoose.Schema({
 conversationSchema.index({ participants: 1 }, { unique: true });
 conversationSchema.index({ updatedAt: -1 });
 
-// Method to get messages
-conversationSchema.methods.getMessages = async function(limit = 50, skip = 0) {
-  return await mongoose.model('Message')
-    .find({ conversationId: this._id })
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit)
-    .populate('senderId', 'username avatar');
-};
 
 // Method to mark messages as read
 conversationSchema.methods.markAsRead = async function(userId) {
@@ -56,11 +47,11 @@ conversationSchema.methods.markAsRead = async function(userId) {
   );
 };
 
-conversationSchema.pre('save', function(next) {
+conversationSchema.pre('save',async function(next) {
   if (this.isModified('participants') || this.isNew) {
     this.participants.sort(); // Sort the participant IDs
   }
-  next();
+
 });
 
 const ConversationModel = mongoose.model("Conversation", conversationSchema);

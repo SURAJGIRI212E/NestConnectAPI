@@ -16,7 +16,7 @@ const subscriptionSchema = new mongoose.Schema({
 subscriptionSchema.index({ user: 1, status: 1 });
 
 // Pre-save middleware to set end date
-subscriptionSchema.pre('save', function(next) {
+subscriptionSchema.pre('save',async function(next) {
   // Only set end date if it's not already set
   if (!this.endDate) {
     const date = new Date();
@@ -36,8 +36,6 @@ subscriptionSchema.pre('save', function(next) {
   if (this.endDate < new Date()) {
     this.status = 'EXPIRED';
   }
-
-  next();
 });
 
 // Add methods

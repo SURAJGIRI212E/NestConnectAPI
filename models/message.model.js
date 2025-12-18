@@ -53,11 +53,10 @@ messageSchema.post('save', async function() {
 });
 
 // Validate maximum 4 images
-messageSchema.pre('save', function(next) {
+messageSchema.pre('save',async function(next) {
   if (this.media && this.media.length > 4) {
     next(new Error('Maximum 4 images allowed per message'));
   }
-  next();
 });
 
 const MessageModel = mongoose.model("Message", messageSchema);
